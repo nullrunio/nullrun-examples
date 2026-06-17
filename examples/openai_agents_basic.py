@@ -18,7 +18,7 @@ import os
 
 from agents import Agent, Runner
 
-from nullrun import init, protect
+from nullrun import WorkflowKilledInterrupt, init, protect
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
 
@@ -34,4 +34,10 @@ def run_agent(prompt: str) -> str:
 
 
 if __name__ == "__main__":
-    print(run_agent("What is the capital of France?"))
+    try:
+        print(run_agent("What is the capital of France?"))
+    except WorkflowKilledInterrupt:
+        # Kill via dashboard control plane: BaseException subclass, must be
+        # caught *before* any `except Exception`. Re-raise if you cannot
+        # resume — see the kill contract in nullrun-docs/concepts/control-plane.md.
+        raise

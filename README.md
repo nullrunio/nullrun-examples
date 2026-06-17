@@ -42,8 +42,10 @@ export NULLRUN_API_KEY=nr_live_...
 python examples/raw_openai_basic.py
 ```
 
-All examples are read-only — they do not modify the gateway state. They
-will create events in your dashboard under the `examples` tag.
+All examples are read-only — they do not modify org state, policies, or
+keys on your account. They **do** emit `track` events to the gateway
+(auto-instrumented HTTP traffic from `init()`), so a `cost_attribution`
+or `examples` tag in the dashboard will pick them up.
 
 ## Contributing
 

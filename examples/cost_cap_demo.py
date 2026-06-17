@@ -19,7 +19,13 @@ from openai import OpenAI
 
 import nullrun
 from nullrun import WorkflowKilledInterrupt, init, protect
-from nullrun.breaker import NullRunBlockedException
+
+# NullRunBlockedException lives in `nullrun.breaker.exceptions` — the
+# `nullrun.breaker` package re-exports only BreakerError, BreakerTransportError,
+# CostLimitExceeded, ApprovalRequired, BreakerTimeout, CircuitBreaker, CBState,
+# so `from nullrun.breaker import NullRunBlockedException` would raise
+# ImportError. We import the class directly from the exceptions module.
+from nullrun.breaker.exceptions import NullRunBlockedException
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
 client = OpenAI()

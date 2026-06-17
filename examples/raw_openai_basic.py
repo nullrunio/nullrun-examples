@@ -12,7 +12,7 @@ import os
 
 from openai import OpenAI
 
-from nullrun import init, protect
+from nullrun import WorkflowKilledInterrupt, init, protect
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
 client = OpenAI()
@@ -28,4 +28,10 @@ def answer(prompt: str) -> str:
 
 
 if __name__ == "__main__":
-    print(answer("In one sentence, what does NullRun do?"))
+    try:
+        print(answer("In one sentence, what does NullRun do?"))
+    except WorkflowKilledInterrupt:
+        # Kill via dashboard control plane: BaseException subclass, must be
+        # caught *before* any `except Exception`. Re-raise if you cannot
+        # resume — see the kill contract in nullrun-docs/concepts/control-plane.md.
+        raise

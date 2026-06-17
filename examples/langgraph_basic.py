@@ -18,7 +18,7 @@ import os
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
-from nullrun import init
+from nullrun import WorkflowKilledInterrupt, init
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
 
@@ -41,10 +41,16 @@ def build_graph():
 def main() -> None:
     # `init()` already attached the NullRunCallback — no manual wiring.
     graph = build_graph()
-    result = graph.invoke(
-        [{"role": "user", "content": "Say hello in one word."}],
-    )
-    print(result["messages"][-1].content)
+    try:
+        result = graph.invoke(
+            [{"role": "user", "content": "Say hello in one word."}],
+        )
+        print(result["messages"][-1].content)
+    except WorkflowKilledInterrupt:
+        # Kill via dashboard control plane: BaseException subclass, must be
+        # caught *before* any `except Exception`. Re-raise if you cannot
+        # resume — see the kill contract in nullrun-docs/concepts/control-plane.md.
+        raise
 
 
 if __name__ == "__main__":
