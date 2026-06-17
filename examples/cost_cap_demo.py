@@ -1,7 +1,9 @@
 """Demonstrate a hard budget cap on an agent.
 
 The agent below loops until the per-workflow budget is exhausted, then
-NullRun raises `BudgetExceededError` and the loop terminates.
+NullRun raises `NullRunBlockedException` (the gate-level budget signal) or
+`WorkflowKilledInterrupt` (if a kill arrives over the WebSocket control
+plane) and the loop terminates.
 
 Run:
     pip install nullrun openai
@@ -15,13 +17,15 @@ import os
 
 from openai import OpenAI
 
-from nullrun import BudgetExceededError, init, protect
+import nullrun
+from nullrun import WorkflowKilledInterrupt, init, protect
+from nullrun.breaker import NullRunBlockedException
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
 client = OpenAI()
 
 
-@protect(workflow_id="cost-cap-demo")
+@protect
 def step(i: int) -> str:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -31,12 +35,21 @@ def step(i: int) -> str:
 
 
 def main() -> None:
-    for i in range(100):
-        try:
-            print(i, step(i))
-        except BudgetExceededError as exc:
-            print(f"halted at step {i}: {exc}")
-            return
+    # `nullrun.workflow(...)` sets a contextvar the gate reads as the
+    # workflow_id. `@protect` itself takes no kwargs.
+    with nullrun.workflow("cost-cap-demo"):
+        for i in range(100):
+            try:
+                print(i, step(i))
+            # `WorkflowKilledInterrupt` is a BaseException subclass (per
+            # the kill contract) — catch it explicitly *before* the
+            # regular Exception handler below.
+            except WorkflowKilledInterrupt as exc:
+                print(f"workflow killed at step {i}: {exc}")
+                return
+            except NullRunBlockedException as exc:
+                print(f"budget exhausted at step {i}: {exc}")
+                return
 
 
 if __name__ == "__main__":
