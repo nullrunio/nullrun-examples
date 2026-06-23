@@ -23,8 +23,10 @@ imported agent framework (`openai`, `openai-agents`, `langgraph`,
 call sites; `@protect` is the **gate** layer (budget / kill / pause) that
 runs *before* the call.
 
-For frameworks that ship an extra, you can install with the matching
-optional dependency (`nullrun[langgraph]`, `nullrun[agents]`, etc.).
+For frameworks that ship an extra, install with the matching optional
+dependency (`nullrun[langgraph]`, `nullrun[openai]`, `nullrun[llama-index]`,
+`nullrun[crewai]`, `nullrun[autogen]`, etc.). The `openai-agents` SDK is
+auto-detected at runtime without a separate extra.
 
 ## Examples
 

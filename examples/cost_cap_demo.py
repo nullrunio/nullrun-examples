@@ -20,11 +20,14 @@ from openai import OpenAI
 import nullrun
 from nullrun import WorkflowKilledInterrupt, init, protect
 
-# NullRunBlockedException lives in `nullrun.breaker.exceptions` — the
-# `nullrun.breaker` package re-exports only BreakerError, BreakerTransportError,
-# CostLimitExceeded, ApprovalRequired, BreakerTimeout, CircuitBreaker, CBState,
-# so `from nullrun.breaker import NullRunBlockedException` would raise
-# ImportError. We import the class directly from the exceptions module.
+# `NullRunBlockedException` lives in `nullrun.breaker.exceptions` — the
+# top-level `nullrun.breaker` package does not re-export it (it only
+# re-exports the canonical Breaker types like BreakerError and
+# CircuitBreaker). Import the class directly from the exceptions module.
+# Several older re-exports (CostLimitExceeded, ApprovalRequired,
+# BreakerTimeout, LoopDetectedException, RetryStormException,
+# RateLimitExceededException) were removed in SDK 0.4.0 and are no
+# longer reachable under any path.
 from nullrun.breaker.exceptions import NullRunBlockedException
 
 init(api_key=os.environ["NULLRUN_API_KEY"])
