@@ -1,9 +1,10 @@
 """Demonstrate a hard budget cap on an agent.
 
 The agent below loops until the per-workflow budget is exhausted, then
-NullRun raises `NullRunBlockedException` (the gate-level budget signal) or
-`WorkflowKilledInterrupt` (if a kill arrives over the WebSocket control
-plane) and the loop terminates.
+NullRun raises ``NullRunBudgetError`` (NR-B004) or
+``WorkflowKilledInterrupt`` (kill via WebSocket control plane).
+``@guarded`` translates the budget exception into a friendly exit; the
+kill signal still propagates because it is a ``BaseException``.
 
 Run:
     pip install nullrun openai
@@ -17,23 +18,13 @@ import os
 
 from openai import OpenAI
 
-import nullrun
-from nullrun import WorkflowKilledInterrupt, init, protect
+from nullrun import guarded, init_or_die, protect, shutdown, workflow
 
-# `NullRunBlockedException` lives in `nullrun.breaker.exceptions` — the
-# top-level `nullrun.breaker` package does not re-export it (it only
-# re-exports the canonical Breaker types like BreakerError and
-# CircuitBreaker). Import the class directly from the exceptions module.
-# Several older re-exports (CostLimitExceeded, ApprovalRequired,
-# BreakerTimeout, LoopDetectedException, RetryStormException,
-# RateLimitExceededException) were removed in SDK 0.4.0 and are no
-# longer reachable under any path.
-from nullrun.breaker.exceptions import NullRunBlockedException
-
-init(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
 client = OpenAI()
 
 
+@guarded
 @protect
 def step(i: int) -> str:
     response = client.chat.completions.create(
@@ -43,23 +34,17 @@ def step(i: int) -> str:
     return response.choices[0].message.content or ""
 
 
-def main() -> None:
-    # `nullrun.workflow(...)` sets a contextvar the gate reads as the
-    # workflow_id. `@protect` itself takes no kwargs.
-    with nullrun.workflow("cost-cap-demo"):
-        for i in range(100):
-            try:
-                print(i, step(i))
-            # `WorkflowKilledInterrupt` is a BaseException subclass (per
-            # the kill contract) — catch it explicitly *before* the
-            # regular Exception handler below.
-            except WorkflowKilledInterrupt as exc:
-                print(f"workflow killed at step {i}: {exc}")
-                return
-            except NullRunBlockedException as exc:
-                print(f"budget exhausted at step {i}: {exc}")
-                return
-
-
 if __name__ == "__main__":
-    main()
+    try:
+        # `nullrun.workflow(...)` sets a contextvar the gate reads as
+        # the workflow_id. `@protect` itself takes no kwargs.
+        with workflow("cost-cap-demo"):
+            for i in range(100):
+                print(i, step(i))
+                # If `step()` raised NullRunBudgetError, @guarded prints
+                # the catalog user-message and sys.exit(1)s. If it
+                # raised WorkflowKilledInterrupt, that BaseException
+                # propagates past @guarded and we never reach the
+                # next iteration.
+    finally:
+        shutdown()

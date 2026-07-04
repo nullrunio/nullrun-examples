@@ -1,10 +1,10 @@
 """Enforce a multi-step OpenAI Agents run with @protect.
 
-Once `nullrun.init()` runs, the OpenAI Agents SDK is auto-instrumented
-(`instrumentation.auto.patch_openai_agents`) — every `Runner.run_*`
-call already fires `track_llm` events through the httpx transport hook
-plus the Agents tracer. `@protect` here adds the *gate* (budget / kill
-/ pause enforcement); the cost tracking happens regardless.
+Once ``init_or_die`` runs, the OpenAI Agents SDK is auto-instrumented
+(every ``Runner.run_*`` call fires ``track_llm`` events through the
+httpx transport hook plus the Agents tracer). ``@protect`` adds the
+*gate* (budget / kill / pause enforcement); ``@guarded`` adds
+zero-boilerplate error handling for the script.
 
 Run:
     pip install nullrun openai-agents
@@ -18,12 +18,13 @@ import os
 
 from agents import Agent, Runner
 
-from nullrun import WorkflowKilledInterrupt, init, protect
+from nullrun import guarded, init_or_die, protect, shutdown
 
-init(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
 
 
-@protect  # gate only — cost tracking is automatic via init()
+@guarded
+@protect
 def run_agent(prompt: str) -> str:
     agent = Agent(
         name="assistant",
@@ -36,8 +37,5 @@ def run_agent(prompt: str) -> str:
 if __name__ == "__main__":
     try:
         print(run_agent("What is the capital of France?"))
-    except WorkflowKilledInterrupt:
-        # Kill via dashboard control plane: BaseException subclass, must be
-        # caught *before* any `except Exception`. Re-raise if you cannot
-        # resume — see the kill contract in nullrun-docs/concepts/control-plane.md.
-        raise
+    finally:
+        shutdown()

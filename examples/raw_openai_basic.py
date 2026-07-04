@@ -1,5 +1,11 @@
 """Smallest possible @protect usage with raw OpenAI.
 
+``init_or_die`` exits cleanly with the catalog message if
+``NULLRUN_API_KEY`` is missing. ``@guarded`` catches any
+``NullRunError`` raised later. ``WorkflowKilledInterrupt`` (a
+BaseException) propagates — kill must reach the top of the agent
+loop.
+
 Run:
     pip install nullrun openai
     export NULLRUN_API_KEY=nr_live_...
@@ -12,12 +18,13 @@ import os
 
 from openai import OpenAI
 
-from nullrun import WorkflowKilledInterrupt, init, protect
+from nullrun import guarded, init_or_die, protect, shutdown
 
-init(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
 client = OpenAI()
 
 
+@guarded
 @protect
 def answer(prompt: str) -> str:
     response = client.chat.completions.create(
@@ -30,8 +37,5 @@ def answer(prompt: str) -> str:
 if __name__ == "__main__":
     try:
         print(answer("In one sentence, what does NullRun do?"))
-    except WorkflowKilledInterrupt:
-        # Kill via dashboard control plane: BaseException subclass, must be
-        # caught *before* any `except Exception`. Re-raise if you cannot
-        # resume — see the kill contract in nullrun-docs/concepts/control-plane.md.
-        raise
+    finally:
+        shutdown()
