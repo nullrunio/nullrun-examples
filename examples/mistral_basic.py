@@ -1,16 +1,18 @@
-"""Smallest possible @protect usage with raw OpenAI.
+"""Smallest possible @protect usage with raw Mistral.
 
 ``init_or_die`` exits cleanly with the catalog message if
-``NULLRUN_API_KEY`` is missing. ``@guarded`` catches any
-``NullRunError`` raised later. ``WorkflowKilledInterrupt`` (a
-BaseException) propagates — kill must reach the top of the agent
-loop.
+``NULLRUN_API_KEY`` is missing. The Mistral Python SDK routes
+through httpx, so ``nullrun.init()`` patches the transport
+automatically — every ``client.chat.complete`` call fires a
+``track_llm`` event without any extra wiring. ``@protect`` adds the
+*gate* layer (budget / kill / pause); ``@guarded`` adds
+zero-boilerplate error handling.
 
 Run:
-    pip install nullrun openai
+    pip install "nullrun[mistral]" mistralai
     export NULLRUN_API_KEY=nr_live_...
-    export OPENAI_API_KEY=sk-...
-    python examples/raw_openai_basic.py
+    export MISTRAL_API_KEY=...
+    python examples/mistral_basic.py
 """
 from __future__ import annotations
 
@@ -21,19 +23,19 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 import os
 
-from openai import OpenAI
+from mistralai import Mistral
 
 from nullrun import guarded, init_or_die, protect, shutdown
 
 init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
-client = OpenAI()
+client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
 
 
 @guarded
 @protect
 def answer(prompt: str) -> str:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = client.chat.complete(
+        model="mistral-small-latest",
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content or ""

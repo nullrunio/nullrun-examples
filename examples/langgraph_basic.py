@@ -13,6 +13,11 @@ Run:
 """
 from __future__ import annotations
 
+from _env import load_env
+
+load_env()  # populate os.environ from examples/.env (no-op if absent)
+
+
 import os
 
 from langchain_openai import ChatOpenAI

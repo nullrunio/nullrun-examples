@@ -15,28 +15,60 @@ export NULLRUN_API_KEY=nr_live_...
 
 Get an API key from the [NullRun dashboard](https://app.nullrun.io).
 
+### Shared `.env` (recommended)
+
+Every example reads its keys from `examples/.env` if
+[`python-dotenv`](https://pypi.org/project/python-dotenv/) is
+installed (`pip install python-dotenv`) — no shell `export` needed.
+Copy the template and fill in your keys:
+
+```bash
+cp examples/.env.example examples/.env
+$EDITOR examples/.env   # set NULLRUN_API_KEY + per-vendor keys
+python examples/raw_openai_basic.py
+```
+
+Without `python-dotenv` the examples fall back to whatever the
+developer's shell already has exported — the auto-load is purely a
+convenience. `examples/.env` is in `.gitignore`; commit only
+`.env.example`.
+
 ## Auto-instrumentation
 
 `nullrun.init(api_key=...)` patches the underlying HTTP transport and any
 imported agent framework (`openai`, `openai-agents`, `langgraph`,
-`autogen`, …) automatically. You get cost tracking without changing your
-call sites; `@protect` is the **gate** layer (budget / kill / pause) that
-runs *before* the call.
+`autogen`, `crewai`, `llama-index`, ...) automatically. You get cost tracking
+without changing your call sites; `@protect` is the **gate** layer (budget /
+kill / pause) that runs *before* the call.
 
 For frameworks that ship an extra, install with the matching optional
-dependency (`nullrun[langgraph]`, `nullrun[openai]`, `nullrun[llama-index]`,
-`nullrun[crewai]`, `nullrun[autogen]`, etc.). The `openai-agents` SDK is
-auto-detected at runtime without a separate extra.
+dependency (`nullrun[langgraph]`, `nullrun[openai]`,
+`nullrun[anthropic]`, `nullrun[mistral]`, `nullrun[gemini]`,
+`nullrun[cohere]`, `nullrun[bedrock]`, `nullrun[agents]`,
+`nullrun[langchain]`, `nullrun[llama-index]`, `nullrun[crewai]`,
+`nullrun[autogen]`). The `openai-agents` SDK is auto-detected at runtime
+without a separate extra.
 
 ## Examples
 
 | File | Framework | What it shows |
 | --- | --- | --- |
 | [`raw_openai_basic.py`](./examples/raw_openai_basic.py) | raw OpenAI | `@protect` + `@guarded` on a single LLM call |
-| [`openai_agents_basic.py`](./examples/openai_agents_basic.py) | OpenAI Agents SDK | `@protect` + `@guarded` on a multi-step agent run |
+| [`anthropic_basic.py`](./examples/anthropic_basic.py) | raw Anthropic | `@protect` + `@guarded` on a `messages.create` call |
+| [`mistral_basic.py`](./examples/mistral_basic.py) | raw Mistral | `@protect` + `@guarded` on a `chat.complete` call |
+| [`gemini_basic.py`](./examples/gemini_basic.py) | raw Gemini | `@protect` + `@guarded` on `models.generate_content` |
+| [`cohere_basic.py`](./examples/cohere_basic.py) | raw Cohere | `@protect` + `@guarded` on `client.chat` (V2) |
+| [`bedrock_basic.py`](./examples/bedrock_basic.py) | AWS Bedrock | `@protect` + manual `track_llm` (boto3 uses urllib3, not httpx) |
+| [`langchain_basic.py`](./examples/langchain_basic.py) | LangChain | Auto-instrumented `ChatModel.invoke` (not via LangGraph) |
 | [`langgraph_basic.py`](./examples/langgraph_basic.py) | LangGraph | Auto-instrumented `StateGraph` (recommended) |
 | [`langgraph_manual_wrapper.py`](./examples/langgraph_manual_wrapper.py) | LangGraph | `nullrun.toolbox.langgraph.wrapper` for re-compiled graphs |
+| [`llama_index_basic.py`](./examples/llama_index_basic.py) | llama-index | Auto-instrumented `LLMChatEndEvent` / `FunctionCallEvent` |
+| [`crewai_basic.py`](./examples/crewai_basic.py) | CrewAI | Auto-instrumented `Crew.kickoff` + `usage_metrics` flush |
+| [`autogen_basic.py`](./examples/autogen_basic.py) | AutoGen | Auto-instrumented `BaseChatAgent.on_messages` |
+| [`openai_agents_basic.py`](./examples/openai_agents_basic.py) | OpenAI Agents SDK | `@protect` + `@guarded` on a multi-step agent run |
 | [`cost_cap_demo.py`](./examples/cost_cap_demo.py) | any | Hard budget cap that halts the agent |
+| [`chain_soft_mode.py`](./examples/chain_soft_mode.py) | any | Soft-mode pass via active `chain` context |
+| [`on_error_hook.py`](./examples/on_error_hook.py) | any | `nullrun.on_error` hook for Sentry / dashboards |
 
 ## Running
 
@@ -47,8 +79,8 @@ python examples/raw_openai_basic.py
 
 All examples are read-only — they do not modify org state, policies, or
 keys on your account. They **do** emit `track` events to the gateway
-(auto-instrumented HTTP traffic from `init()`), so a `cost_attribution`
-or `examples` tag in the dashboard will pick them up.
+(auto-instrumented HTTP traffic from `init()`), so a `cost_attribution` or
+`examples` tag in the dashboard will pick them up.
 
 Every example ends with `nullrun.shutdown()` in a `finally` block. This
 sends a clean WebSocket close frame so the backend does not log
