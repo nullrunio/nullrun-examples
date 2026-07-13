@@ -49,7 +49,7 @@ if __name__ == "__main__":
         with nullrun.handle():
             with nullrun.workflow("langgraph-manual-wrapper-demo"):
                 result = app.invoke(
-                    [{"role": "user", "content": "Say hello in one word."}],
+                    {"messages": [{"role": "user", "content": "Say hello in one word."}]},
                 )
                 print(result["messages"][-1].content)
     finally:
