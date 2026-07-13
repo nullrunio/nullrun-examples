@@ -27,7 +27,7 @@ from mistralai import Mistral
 
 from nullrun import guarded, init_or_die, protect, shutdown
 
-init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
 
 

@@ -31,7 +31,7 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 from nullrun import guarded, init_or_die, protect, shutdown
 
-init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 
 
 @guarded

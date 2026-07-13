@@ -25,7 +25,7 @@ from openai import OpenAI
 
 from nullrun import guarded, init_or_die, protect, shutdown, workflow
 
-init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = OpenAI()
 
 

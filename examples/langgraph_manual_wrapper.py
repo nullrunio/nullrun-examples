@@ -28,7 +28,7 @@ import nullrun
 from nullrun import init_or_die, shutdown
 from nullrun.toolbox.langgraph import wrapper
 
-init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
