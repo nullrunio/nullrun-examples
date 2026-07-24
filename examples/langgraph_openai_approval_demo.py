@@ -63,11 +63,13 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 import json
 
+from decimal import Decimal
+
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
-from nullrun import init_or_die, shutdown, workflow
+from nullrun import init_or_die, shutdown
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
 from nullrun.toolbox.langgraph import wrapper
@@ -108,7 +110,7 @@ llm = ChatOpenAI(model="gpt-4o-mini")
     units="major",
 ))
 @protect
-def refund_customer(refund_amount: float, customer_id: str) -> str:
+def refund_customer(refund_amount: Decimal, customer_id: str) -> str:
     """Issue a refund for ``customer_id`` of ``refund_amount`` USD.
 
     The body runs only after the gate has returned ``allow``.
@@ -121,6 +123,12 @@ def refund_customer(refund_amount: float, customer_id: str) -> str:
     """
     # 50.99 -> 5099 cents happens inside the @sensitive
     # extractor; the body just sees the original Decimal.
+    # The LLM is told to pass ``Decimal("50.99")`` for the
+    # ``refund_amount`` field; ``money_outflow(units="major")``
+    # requires Decimal (or int) — float is rejected to avoid
+    # silent precision loss. We accept Decimal at the body
+    # signature so the round-trip preserves the caller's value
+    # all the way to the wire.
     print(
         f"  [refund] customer_id={customer_id!r} "
         f"refund_amount={refund_amount} USD -> ok"
@@ -160,10 +168,14 @@ TOOLS = [
                         "description": "The customer id.",
                     },
                     "refund_amount": {
-                        "type": "number",
+                        "type": "string",
                         "description": (
-                            "Refund amount in USD. Use major "
-                            "units, e.g. 50.99 means $50.99."
+                            "Refund amount in USD as a decimal "
+                            "string, e.g. '50.99' for $50.99. "
+                            "We accept strings (not numbers) so "
+                            "the tool receives a Decimal that "
+                            "the SDK can convert to integer minor "
+                            "units without float-precision loss."
                         ),
                     },
                 },
@@ -212,7 +224,17 @@ def run_tool_call(tool_call: dict) -> str:
     single-string ``content`` payload.
     """
     fn_name = tool_call["name"]
-    args = tool_call["args"]
+    args = dict(tool_call["args"])
+    # LangGraph returns the LLM's JSON-decoded arguments as
+    # native Python types. ``refund_amount`` is typed as a
+    # string in the OpenAI tool schema so the LLM does not
+    # round through float (which would lose precision on
+    # amounts like ``50.99``). Convert back to ``Decimal``
+    # here, before the call, so the @sensitive extractor's
+    # ``int | Decimal`` type guard accepts it and the body
+    # signature (``refund_amount: Decimal``) matches.
+    if "refund_amount" in args and isinstance(args["refund_amount"], str):
+        args["refund_amount"] = Decimal(args["refund_amount"])
     fn = TOOL_FUNCTIONS[fn_name]
     # Note: ``@protect`` swallows the gate's block into
     # NullRunBlockedException; the agent's outer
@@ -301,22 +323,33 @@ USER_PROMPT = (
 if __name__ == "__main__":
     try:
         with nullrun.handle():
-            with workflow("langgraph-approval-demo"):
-                result = app.invoke(
-                    {
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": USER_PROMPT},
-                        ],
-                    },
-                )
-                # Print the final reply so the operator sees
-                # the summary the agent composed after the
-                # three calls.
-                final = result["messages"][-1]
-                if isinstance(final, dict):
-                    print("\n[agent] final:", final.get("content", ""))
-                else:
-                    print("\n[agent] final:", getattr(final, "content", ""))
+            # The agent runs against the API key's bound workflow
+            # (resolved by ``_authenticate`` from
+            # ``organization_api_keys.workflow_id``). We do NOT
+            # wrap the call in ``with workflow(...)`` because that
+            # would push a fresh workflow_id into the track
+            # contextvar and the backend's ingestion would drop the
+            # events with ``CRITICAL: Cannot resolve valid
+            # workflow_id`` (the string is not a UUID, so it does
+            # not match any row in the ``workflows`` table). The
+            # /gate side already uses the API key's bound workflow,
+            # so the approval rule and the budget counter stay
+            # consistent with the dashboard.
+            result = app.invoke(
+                {
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": USER_PROMPT},
+                    ],
+                },
+            )
+            # Print the final reply so the operator sees
+            # the summary the agent composed after the
+            # three calls.
+            final = result["messages"][-1]
+            if isinstance(final, dict):
+                print("\n[agent] final:", final.get("content", ""))
+            else:
+                print("\n[agent] final:", getattr(final, "content", ""))
     finally:
         shutdown()
