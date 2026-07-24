@@ -191,18 +191,28 @@ TOOL_FUNCTIONS = {
 
 
 def run_tool_call(tool_call: dict) -> str:
-    """Dispatch a single OpenAI tool_call through the gate.
+    """Dispatch a single LangGraph tool_call through the gate.
 
-    Pulls the function name from the tool_call payload,
-    looks up the matching Python function (which is
-    ``@sensitive @protect`` so the gate fires on the way in),
-    and returns the function's result as a JSON-encoded
-    string. OpenAI tool messages require the response to be a
-    single string, so we serialize the return value through
-    ``json.dumps``.
+    LangGraph's ``AIMessage.tool_calls`` (returned by
+    ``ChatOpenAI.invoke(..., tools=...)`` after the
+    LangChain LangGraph adapter) uses a flatter shape than
+    the raw OpenAI Chat Completions payload:
+
+        {"name": "refund_customer",
+         "args": {"refund_amount": 100.0, "customer_id": "cust-demo"},
+         "id": "call_123",
+         "type": "tool_call"}
+
+    The body of the local ``refund_customer`` is annotated
+    ``@sensitive @protect`` so the gate fires on the way in;
+    the ``json.loads`` step is gone because LangGraph
+    already parsed the OpenAI JSON arguments into a dict.
+    Returns the function's result as a JSON-encoded string
+    so the matching LangGraph ``ToolMessage`` carries a
+    single-string ``content`` payload.
     """
-    fn_name = tool_call["function"]["name"]
-    args = json.loads(tool_call["function"]["arguments"])
+    fn_name = tool_call["name"]
+    args = tool_call["args"]
     fn = TOOL_FUNCTIONS[fn_name]
     # Note: ``@protect`` swallows the gate's block into
     # NullRunBlockedException; the agent's outer
