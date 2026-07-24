@@ -28,29 +28,10 @@ The deliberate structure:
         ``@protect`` function (which routes through the gate).
       - Appends the result to the message list and loops.
       - Eventually stops once the LLM emits a non-tool reply.
-  * The CLI does NOT use ``with workflow(...)`` because the
-    API key is bound to a single workflow on the backend. The
-    SDK resolves that workflow_id automatically on the first
-    ``@protect`` call (``_authenticate`` reads
-    ``organization_api_keys.workflow_id``). Using
-    ``with workflow("some-name")`` with an arbitrary name would
-    create a NEW workflow_id in the SDK context; the backend's
-    /track ingestion then drops the events with
-    ``CRITICAL: Cannot resolve valid workflow_id`` because the
-    body workflow_id does not match the key-bound workflow.
-
-* The body of ``refund_customer`` calls
-    ``set_call_context(tools=["refund_customer"])`` so the
-    next ``@protect`` / ``/api/v1/gate`` pre-flight sees the
-    real tool name. Without this, the pre-fix code observed
-    ``HTTPStatusError`` retries (11 attempts = ``max_retries=10``
-    + 1 initial) in the SDK's transport layer on every refund.
-    Setting the tool name explicitly resolves the retry storm
-    because the gate's tool_block pre-check now has a non-empty
-    tools list to match against the workflow's blocked_tools
-    aggregate. The contextvar is sticky, so the body resets it
-    to ``[]`` on the way out so the next LangGraph iteration
-    starts from a clean slate.
+  * The `with workflow(...)` block scopes the API key so the
+    backend can resolve the operator's approval rules for that
+    workflow. The CLI prints the chat history at the end so the
+    operator can see the three refunds fire in order.
 
 Run:
     pip install "nullrun[langgraph]" langgraph langchain-openai
@@ -86,7 +67,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
-from nullrun import init_or_die, set_call_context, shutdown
+from nullrun import init_or_die, shutdown, workflow
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
 from nullrun.toolbox.langgraph import wrapper
@@ -140,34 +121,17 @@ def refund_customer(refund_amount: float, customer_id: str) -> str:
     """
     # 50.99 -> 5099 cents happens inside the @sensitive
     # extractor; the body just sees the original Decimal.
-    #
-    # Why set_call_context(tools=[...]): the @protect boundary
-    # fires /api/v1/gate on the way in, and the gate's tool_block
-    # pre-check matches the per-call tool list against the
-    # workflow's blocked_tools aggregate. Without this call, the
-    # gate sees an empty tool list and the body wraps the call
-    # with no tool-block context. The pre-fix code observed
-    # HTTPStatusError retries (11 attempts = 10 + 1 initial)
-    # in the SDK's transport layer on every refund call;
-    # setting tools=[fn.__name__] gives the gate the real tool
-    # name and stops the retry storm. The contextvar is sticky
-    # until reset, so we reset to [] before returning so the
-    # next LangGraph iteration starts from a clean slate.
-    set_call_context(tools=["refund_customer"])
-    try:
-        print(
-            f"  [refund] customer_id={customer_id!r} "
-            f"refund_amount={refund_amount} USD -> ok"
-        )
-        return json.dumps(
-            {
-                "status": "ok",
-                "customer_id": customer_id,
-                "refund_amount": refund_amount,
-            }
-        )
-    finally:
-        set_call_context(tools=[])
+    print(
+        f"  [refund] customer_id={customer_id!r} "
+        f"refund_amount={refund_amount} USD -> ok"
+    )
+    return json.dumps(
+        {
+            "status": "ok",
+            "customer_id": customer_id,
+            "refund_amount": refund_amount,
+        }
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -337,18 +301,22 @@ USER_PROMPT = (
 if __name__ == "__main__":
     try:
         with nullrun.handle():
-            result = app.invoke(
-                {
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": USER_PROMPT},
-                    ],
-                },
-            )
-            final = result["messages"][-1]
-            if isinstance(final, dict):
-                print("\n[agent] final:", final.get("content", ""))
-            else:
-                print("\n[agent] final:", getattr(final, "content", ""))
+            with workflow("langgraph-approval-demo"):
+                result = app.invoke(
+                    {
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": USER_PROMPT},
+                        ],
+                    },
+                )
+                # Print the final reply so the operator sees
+                # the summary the agent composed after the
+                # three calls.
+                final = result["messages"][-1]
+                if isinstance(final, dict):
+                    print("\n[agent] final:", final.get("content", ""))
+                else:
+                    print("\n[agent] final:", getattr(final, "content", ""))
     finally:
         shutdown()
