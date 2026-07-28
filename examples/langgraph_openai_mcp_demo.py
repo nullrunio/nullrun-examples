@@ -11,10 +11,15 @@ Walk-through of v3.31 (Разрыв 3):
      ``pip install "nullrun[langgraph,mcp]"``).
   2. The MCP server exposes THREE tools that mix the spec's
      ``readOnlyHint`` / ``destructiveHint`` / ``openWorldHint``
-     annotations:
-        * ``search_issues(query)``         — read-only, safe.
-        * ``create_issue(title, body, ...)`` — destructive, open-world.
-        * ``close_issue(issue_id, reason)`` — destructive, open-world.
+     annotations (MiragE-MCP-spec 2025-06-18 §tools/list):
+        * ``search_issues(query)``         — read-only.
+        * ``create_issue(title, body, ...)`` — destructive + open-world
+          (creates an external-side-effect record).
+        * ``close_issue(issue_id, reason)`` — destructive, **not**
+          open-world (close-as-not-planned is a state-change in
+          the local store, no external side-effect).
+     The docstring's annotation set mirrors the wire enum the
+     SDK adapter will stamp on every /check.
   3. The agent's loop forwards every MCP tool call to the gate
      via ``@nullrun.protect`` + ``MCPAdapter`` (Разрыв 3 SDK-side).
      The adapter stamps ``tool_class="mcp"`` + the cached
@@ -83,8 +88,18 @@ After running this script, the dashboard at
 ``/control-center/mcp-servers`` will show:
 
     server_name:     github-mock
-    drift_status:    unannounced       # close_issue + create_issue match
-                                         # the destructive-verb heuristic
+    drift_status:    ok                  # the destructive-verb
+                                         # heuristic (delete|drop|
+                                         # remove|force|refund|
+                                         # destroy|kill) does NOT
+                                         # match any of our 3 tool
+                                         # names — create / close /
+                                         # search are all "domain
+                                         # verbs" rather than the
+                                         # ad-hoc destructive list.
+                                         # A name like delete_* or
+                                         # drop_* WOULD flip this
+                                         # to unannounced.
     observed_tools:  [search_issues, create_issue, close_issue]
 """
 
@@ -291,19 +306,23 @@ from dataclasses import dataclass
 
 from langchain_openai import ChatOpenAI
 
-import nullrun
 from nullrun import init_or_die, shutdown
 from nullrun.decorators import protect
 from nullrun.toolbox.mcp import MCPAdapter
 
+# Defer init_or_die() to main() so an unset NULLRUN_API_KEY doesn't
+# kill the process before the user can read the OPENAI_API_KEY
+# warning below. Same trick is used by the other examples in this
+# directory (see examples/langgraph_openai_approval_demo.py).
 if not os.environ.get("OPENAI_API_KEY"):
     sys.stderr.write(
         "OPENAI_API_KEY is not set — export it before running this"
         " example.\n"
     )
 
-init_or_die()  # reads NULLRUN_API_KEY; friendly exit if missing
-
+# We construct the LLM here (no network call yet — `invoke` is
+# where the network actually happens) so any import-time LLM
+# configuration errors surface before main() runs.
 llm = ChatOpenAI(model="gpt-4o-mini")
 
 
@@ -423,18 +442,14 @@ def build_mcp_client():
             # The actual MCP server dispatcher is async. The
             # MCPAdapter's contract is synchronous
             # (call_tool returns the value, not a coroutine),
-            # so we spin a one-shot loop just for the bridge.
-            # The dedicated subprocess / stdio / Streamable
-            # HTTP transports handle this for real.
-            async def _go():
-                return await mcp_dispatch(name, arguments)
-
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(_go())
-            finally:
-                loop.close()
-            return result
+            # so we bridge via ``asyncio.run`` — which creates
+            # a fresh event loop per call, runs the coroutine to
+            # completion, and tears the loop down. The dedicated
+            # subprocess / stdio / Streamable HTTP transports
+            # handle the bridge for real; this in-process path is
+            # only used by the demo (one call per tool per demo
+            # run, so the per-call loop cost is in the noise).
+            return asyncio.run(mcp_dispatch(name, arguments))
 
     return _InMemoryMCPClient(inventory)
 
@@ -551,6 +566,15 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
     for tc in message.get("tool_calls") or []:
         fn = tc.get("function") or {}
         name = fn.get("name")
+        # OpenAI occasionally returns malformed tool_call entries
+        # (e.g. partial streaming) where the function name is
+        # missing. Skip them rather than crashing the demo — a
+        # real agent would log a structured error and re-plan.
+        if not name:
+            print(
+                f"[demo] !! tool_call missing function name: {tc!r}"
+            )
+            continue
         # OpenAI tool_calls.arguments is a JSON string. LangChain's
         # ChatOpenAI converts to dict in some versions — handle
         # both. Our wrapper takes ``arguments`` as a dict.
@@ -573,16 +597,30 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
 
 
 def main() -> int:
+    # Connect to NULLRUN now. This is a fail-fast: if the key is
+    # missing, ``init_or_die`` prints a friendly message + exits
+    # before we make any OpenAI calls.
+    init_or_die()
+
     state = MCPDemoState(messages=[])
     for prompt in DEMO_PROMPTS:
         state.messages.append({"role": "user", "content": prompt})
-        response = chat_with_tool_calling(state.messages)
-        if response is None:
-            continue
-        dispatch_tool_call(response.model_dump(), state)
-        # One extra model turn to acknowledge the tool result.
-        ack = chat_with_tool_calling(state.messages)
-        if ack is None:
+        try:
+            response = chat_with_tool_calling(state.messages)
+            if response is None:
+                continue
+            dispatch_tool_call(response.model_dump(), state)
+            # One extra model turn to acknowledge the tool result.
+            ack = chat_with_tool_calling(state.messages)
+            if ack is None:
+                continue
+        except Exception as exc:  # noqa: BLE001
+            # The gate returns ``WorkflowKilledInterrupt`` (or
+            # similar) on 403/402 — the demo's job is to surface
+            # those clearly without aborting the whole script.
+            # A real agent would re-plan; for a single-shot
+            # walk-through we just print + continue.
+            print(f"[demo] !! tool call blocked: {type(exc).__name__}: {exc}")
             continue
     print("\n[demo] finished — full conversation log:\n")
     for m in state.messages:
