@@ -564,8 +564,39 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
     the conversation log."""
 
     for tc in message.get("tool_calls") or []:
-        fn = tc.get("function") or {}
-        name = fn.get("name")
+        # FIX 2026-08-06 (DEF-SDKWRAP-LANGRAPH-MCP-DISPATCH-BLOCK-01,
+        # Session 6 TC-SDKWRAP-14): LangChain's ChatOpenAI returns
+        # tool_calls in PARSED format (``{name, args, id, type}`` at
+        # the top level) — not the OpenAI raw wire format
+        # (``{function: {name, arguments}}``) the previous code read.
+        # Pre-fix ``fn = tc.get("function") or {}`` always returned
+        # ``{}`` for LangChain-parsed tool_calls, ``name = fn.get(
+        # "name")`` was None, and every tool call hit the
+        # ``if not name: continue`` skip branch — so the MCP wire
+        # payload (``tool_class="mcp"``, ``mcp://`` namespace,
+        # ``mcp_annotations``) was never verified end-to-end (3/3
+        # demo MCP calls silently dropped before @protect fired).
+        #
+        # Resolution order: LangChain-parsed first (the actual
+        # format ChatOpenAI returns), OpenAI-raw fallback for any
+        # future stack that re-surfaces the raw wire dict. Both
+        # shapes are documented in the LangChain/OpenAI SDKs and a
+        # robust dispatcher should handle either. ``args`` in the
+        # LangChain format is already a dict (not a JSON string),
+        # so no ``json.loads`` round-trip is needed there — only the
+        # OpenAI-raw branch parses.
+        name = tc.get("name")
+        args = tc.get("args")
+        if name is None:
+            # OpenAI raw format fallback — ``tc.function.{name,
+            # arguments}``.
+            fn = tc.get("function") or {}
+            name = fn.get("name")
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(raw_args)
+            except json.JSONDecodeError:
+                args = {}
         # OpenAI occasionally returns malformed tool_call entries
         # (e.g. partial streaming) where the function name is
         # missing. Skip them rather than crashing the demo — a
@@ -575,13 +606,7 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
                 f"[demo] !! tool_call missing function name: {tc!r}"
             )
             continue
-        # OpenAI tool_calls.arguments is a JSON string. LangChain's
-        # ChatOpenAI converts to dict in some versions — handle
-        # both. Our wrapper takes ``arguments`` as a dict.
-        raw_args = fn.get("arguments") or "{}"
-        try:
-            args = json.loads(raw_args)
-        except json.JSONDecodeError:
+        if not isinstance(args, dict):
             args = {}
         print(f"[demo] -> gate: tool={name!r} args={args}")
         result = call_mcp_tool(tool_name=name, arguments=args)
