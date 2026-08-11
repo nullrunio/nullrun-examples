@@ -24,9 +24,13 @@ jobs:
     name: SDK init smoke (no real call)
     runs-on: ubuntu-latest
     needs: syntax-check
-    # Skip the call without the secret so forks / public PRs without
-    # credentials still pass. The secret check is at the step level
-    # because GitHub Actions does not allow secrets.* in a job-level if.
+    # Bring the secret into a job-level env so the step-level if below
+    # can check env.<var> != ''. GitHub Actions does not allow secrets.*
+    # in any if: expression (job OR step level -- run 31504058183 still
+    # errored at line 38, col 13 with the same 'Unrecognized named-value:
+    # secrets' after the move from job-level to step-level if).
+    env:
+      SMOKE_API_KEY: ${{ secrets.NULLRUN_API_KEY_SMOKE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,7 +39,7 @@ jobs:
       - name: Install SDK
         run: pip install nullrun
       - name: Run smoke test
-        if: ${{ secrets.NULLRUN_API_KEY_SMOKE != '' }}
+        if: ${{ env.SMOKE_API_KEY != '' }}
         env:
           NULLRUN_API_KEY: ${{ secrets.NULLRUN_API_KEY_SMOKE }}
           NULLRUN_API_URL: ${{ secrets.NULLRUN_API_URL }}
