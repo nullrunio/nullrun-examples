@@ -1,10 +1,37 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Virtualenvs
 .venv/
 venv/
+examples/.venv/
+examples/__pycache__/
+
+# Local secrets — NEVER commit. The .env.example template is the only env file in git.
 .env
+.env.*
+*.backup
+!.env.example
+
+# Tooling state
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code internals — keep repo clean of personal session data
+.claude/
 .claude-flow/
+.worktrees/
+
+# Local SDK wheel builds
+.local-sdk-dist/
+
+# Throwaway probe scripts (anything starting with `.tmp_`)
+*.tmp_*.py
+
+# Internal QA artefacts (kept on disk, never committed)
+explotarory testing/
+exploratory_testing/
+qa/logs/
+qa/*.log
