@@ -3,8 +3,13 @@
 Working examples for the
 [nullrun Python SDK](https://github.com/nullrunio/nullrun-sdk-python).
 
-Each example is a self-contained, runnable file. The intent is to show the
-smallest possible change to add enforcement to a common agent framework.
+Each example is a self-contained, runnable file. The intent is to show
+the smallest possible change to add enforcement to a common agent
+framework.
+
+For a categorized map (basic / policies / demos / probes), see
+[`examples/INDEX.md`](./examples/INDEX.md). The README below covers
+only the basic + policies tiers.
 
 ## Prerequisites
 
@@ -14,6 +19,15 @@ export NULLRUN_API_KEY=nr_live_...
 ```
 
 Get an API key from the [NullRun dashboard](https://app.nullrun.io).
+
+### Security notice — read this first
+
+* `examples/.env` (real keys) is gitignored — **never** commit it.
+* If a key ever appeared in `.env.backup` or any plain‑text file, treat
+  it as compromised: rotate from the NullRun dashboard and from the
+  vendor (OpenAI / Anthropic / ...) immediately. Disk‑only exposure
+  is still exposure (cloud sync, lost laptop, shared screen recording).
+* Use a short‑lived key for local dev. Use a CI‑only key for smoke runs.
 
 ### Shared `.env` (recommended)
 
@@ -69,6 +83,11 @@ without a separate extra.
 | [`cost_cap_demo.py`](./examples/cost_cap_demo.py) | any | Hard budget cap that halts the agent |
 | [`chain_soft_mode.py`](./examples/chain_soft_mode.py) | any | Soft-mode pass via active `chain` context |
 | [`on_error_hook.py`](./examples/on_error_hook.py) | any | `nullrun.on_error` hook for Sentry / dashboards |
+
+Larger demos (LangGraph + approval rule, LangGraph + MCP, ToolParameters,
+gate pre-flight) live under [`examples/INDEX.md`](./examples/INDEX.md#demos--larger-end-to-end-walk-throughs).
+QA probes are also listed there under **Probes** — they are not
+documented here because they assume specific workflow configurations.
 
 ## Running
 
@@ -133,7 +152,19 @@ for the full list. But for the common "run an agent and print a
 friendly message on failure" case, `init_or_die` + `@guarded` /
 `handle` is enough.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `Connection reset without closing handshake` on the backend | forgot `shutdown()` in a long-running script | add `nullrun.shutdown()` in `finally` (every example already does) |
+| `NR-B004 NullRunBudgetError` after a few calls | workflow budget exhausted on the dashboard | raise the cap or wait for the reset |
+| `WorkflowKilledInterrupt` propagates up | operator clicked "kill" on the dashboard | expected; the agent loop sees it as a `BaseException` and exits cleanly |
+| `init_or_die()` exits with a clean message | `NULLRUN_API_KEY` not set | `cp examples/.env.example examples/.env` and fill it in |
+| `ImportError: mcp.server` in the MCP demo | `modelcontextprotocol` not installed | `pip install "nullrun[langgraph,mcp]"` |
+
 ## Contributing
 
-PRs welcome. Keep each example under 80 lines. No external state beyond
-the NullRun API key.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md). Keep each basic example
+under 80 lines. No external state beyond the NullRun API key. Use the
+shared `_env.py` and `_boilerplate.py` helpers — do not reimplement
+env loading per file.
