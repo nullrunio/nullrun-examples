@@ -56,6 +56,7 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
 import json
+from decimal import Decimal
 
 import nullrun
 from nullrun import init_or_die, shutdown
@@ -232,7 +233,6 @@ if __name__ == "__main__":
             # ToolParameters rule. Matches a separate
             # ``when amount > $50 USD`` rule instead. Set up
             # that rule on the dashboard to see it fire.
-            from decimal import Decimal
             _try_call("money", refund_customer,
                       refund_amount=Decimal("75.00"), customer_id="cust-1")
     finally:

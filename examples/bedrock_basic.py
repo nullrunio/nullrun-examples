@@ -1,21 +1,3 @@
-"""Enforce a Bedrock InvokeModel call with @protect.
-
-``boto3`` does NOT route through httpx — it uses its own urllib3
-session — so ``nullrun.init()`` cannot auto-track Bedrock calls the
-way it does OpenAI / Anthropic / Mistral. We call ``track_llm``
-manually with the token counts Bedrock returns in its response.
-
-``@protect`` still gates the call (budget / kill / pause); ``@guarded``
-still translates a ``NullRunError`` into a friendly exit.
-
-Run:
-    pip install "nullrun[bedrock]" boto3
-    export NULLRUN_API_KEY=nr_live_...
-    export AWS_ACCESS_KEY_ID=...
-    export AWS_SECRET_ACCESS_KEY=...
-    export AWS_DEFAULT_REGION=us-east-1
-    python examples/bedrock_basic.py
-"""
 from __future__ import annotations
 
 from _env import load_env
@@ -23,13 +5,14 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
+import json
 import os
 
 import boto3
 
 from nullrun import guarded, init_or_die, protect, shutdown, track_llm
 
-init_or_die(api_key=os.environ["NULLRUN_API_KEY"])
+init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 
 
@@ -47,8 +30,6 @@ def answer(prompt: str) -> str:
         ),
     )
     # Parse the Anthropic-on-Bedrock response shape.
-    import json
-
     payload = json.loads(response["body"].read())
     usage = payload.get("usage") or {}
     in_tok = int(usage.get("input_tokens") or 0)

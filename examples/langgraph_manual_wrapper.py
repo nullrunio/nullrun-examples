@@ -19,8 +19,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
@@ -47,7 +45,6 @@ app = wrapper(graph.compile())
 if __name__ == "__main__":
     try:
         with nullrun.handle():
-            with nullrun.workflow("langgraph-manual-wrapper-demo"):
                 result = app.invoke(
                     {"messages": [{"role": "user", "content": "Say hello in one word."}]},
                 )

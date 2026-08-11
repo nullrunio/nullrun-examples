@@ -29,11 +29,9 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from openai import OpenAI
 
-from nullrun import chain, guarded, init_or_die, protect, shutdown, workflow
+from nullrun import chain, guarded, init_or_die, protect, shutdown
 
 init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = OpenAI()
@@ -51,20 +49,8 @@ def step(i: int) -> str:
 
 if __name__ == "__main__":
     try:
-        with workflow("chain-soft-mode-demo"):
-            # `chain(...)` activates soft-mode pass for every /check
-            # call inside the block. `op="start"` registers the chain
-            # on the first call; subsequent calls auto-extend its
-            # idle TTL. The chain_id is forwarded by @protect; the
-            # user code never has to pass it explicitly.
-            with chain("chain-soft-mode-demo-loop", op="start"):
-                for i in range(50):
-                    print(i, step(i))
-                    # If the per-workflow budget is exhausted AND the
-                    # policy is Soft, the gate now grants the call
-                    # (charging it to overdraft_used). When the
-                    # overdraft cap is hit, NullRunBudgetError
-                    # fires -- @guarded prints the catalog message
-                    # and exits.
+        with chain("chain-soft-mode-demo-loop", op="start"):
+            for i in range(50):
+                print(i, step(i))
     finally:
         shutdown()

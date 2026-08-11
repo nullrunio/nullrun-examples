@@ -19,11 +19,9 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from openai import OpenAI
 
-from nullrun import guarded, init_or_die, protect, shutdown, workflow
+from nullrun import guarded, init_or_die, protect, shutdown
 
 init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = OpenAI()
@@ -41,15 +39,7 @@ def step(i: int) -> str:
 
 if __name__ == "__main__":
     try:
-        # `nullrun.workflow(...)` sets a contextvar the gate reads as
-        # the workflow_id. `@protect` itself takes no kwargs.
-        with workflow("cost-cap-demo"):
-            for i in range(100):
-                print(i, step(i))
-                # If `step()` raised NullRunBudgetError, @guarded prints
-                # the catalog user-message and sys.exit(1)s. If it
-                # raised WorkflowKilledInterrupt, that BaseException
-                # propagates past @guarded and we never reach the
-                # next iteration.
+        for i in range(100):
+            print(i, step(i))
     finally:
         shutdown()

@@ -40,14 +40,19 @@ log = logging.getLogger("nullrun.example")
 def _to_log(err, ctx):
     # `err` is a NullRunError subclass; `ctx` is an ErrorContext.
     # Both are documented in nullrun.observability.error_hooks.
+    # The `extra` keys below are deliberately namespaced to avoid clashing
+    # with reserved `LogRecord` attribute names (`message`, `asctime`,
+    # `levelname`, ...). If you add a custom key here, double-check against
+    # the LogRecord spec at https://docs.python.org/3/library/logging.html#logrecord-attributes.
     log.warning(
-        "NullRun error",
+        "NullRun error code=%s stage=%s retryable=%s workflow_id=%s",
+        err.error_code, ctx.stage, err.retryable, ctx.workflow_id,
         extra={
-            "code": err.error_code,
-            "stage": ctx.stage,
-            "retryable": err.retryable,
-            "workflow_id": ctx.workflow_id,
-            "user_action": err.user_action,
+            "nr_code": err.error_code,
+            "nr_stage": ctx.stage,
+            "nr_retryable": err.retryable,
+            "nr_workflow_id": ctx.workflow_id,
+            "nr_user_action": err.user_action,
         },
     )
 

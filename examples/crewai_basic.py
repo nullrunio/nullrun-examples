@@ -22,8 +22,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from crewai import Agent, Crew, Process, Task
 
 from nullrun import guarded, init_or_die, protect, shutdown

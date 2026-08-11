@@ -1,21 +1,3 @@
-"""Enforce an AutoGen ``BaseChatAgent.on_messages`` run with @protect.
-
-AutoGen ships its own LLM client (``OpenAIChatCompletionClient``)
-which may or may not route through httpx depending on the version
-and the chat model. ``nullrun`` patches ``BaseChatAgent.on_messages``
-so the agent lifecycle itself is tracked regardless of which LLM
-client is underneath, and also wraps the OpenAI-compat client's
-``create`` method for streaming-safe token capture.
-
-``@protect`` adds the *gate* layer (budget / kill / pause);
-``@guarded`` translates any ``NullRunError`` into a friendly exit.
-
-Run:
-    pip install "nullrun[autogen]" autogen-agentchat autogen-ext
-    export NULLRUN_API_KEY=nr_live_...
-    export OPENAI_API_KEY=sk-...
-    python examples/autogen_basic.py
-"""
 from __future__ import annotations
 
 from _env import load_env
@@ -24,7 +6,6 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
 import asyncio
-import os
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient

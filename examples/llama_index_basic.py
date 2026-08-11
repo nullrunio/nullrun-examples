@@ -21,8 +21,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from llama_index.core import Settings
 from llama_index.core.llms import ChatMessage
 from llama_index.llms.openai import OpenAI

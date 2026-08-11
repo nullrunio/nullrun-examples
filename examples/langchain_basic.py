@@ -21,8 +21,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 

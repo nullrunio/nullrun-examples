@@ -138,7 +138,8 @@ def refund_customer(refund_amount: Decimal, customer_id: str) -> str:
             "status": "ok",
             "customer_id": customer_id,
             "refund_amount": refund_amount,
-        }
+        },
+        default=str,
     )
 
 

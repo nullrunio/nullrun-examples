@@ -18,8 +18,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
@@ -34,9 +32,6 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 def chat(state: MessagesState):
     return {"messages": [llm.invoke(state["messages"])]}
 
-
-# `StateGraph(MessagesState)` replaces the deprecated
-# `langgraph.graph.MessageGraph` (removed in langgraph 1.0).
 graph = StateGraph(MessagesState)
 graph.add_node("chat", chat)
 graph.add_edge("chat", END)
@@ -45,18 +40,11 @@ app = graph.compile()
 
 
 if __name__ == "__main__":
-    # `with nullrun.handle():` catches any NullRunError raised inside
-    # the graph and exits with the catalog user-message. WorkflowKilledInterrupt
-    # (BaseException) propagates unchanged.
     try:
         with nullrun.handle():
-            with nullrun.workflow("langgraph-basic-demo"):
                 result = app.invoke(
                     {"messages": [{"role": "user", "content": "Say hello in one word."}]},
                 )
                 print(result["messages"][-1].content)
     finally:
-        # Send a clean WS close frame so the backend does not log
-        # "Connection reset without closing handshake". No-op if
-        # init() was never called.
         shutdown()

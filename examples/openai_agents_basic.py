@@ -19,8 +19,6 @@ from _env import load_env
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 
-import os
-
 from agents import Agent, Runner
 
 from nullrun import guarded, init_or_die, protect, shutdown
