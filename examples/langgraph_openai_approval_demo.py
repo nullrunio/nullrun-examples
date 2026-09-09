@@ -63,6 +63,8 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 import json
 
+import sys
+
 from decimal import Decimal
 
 from langchain_openai import ChatOpenAI
@@ -70,6 +72,7 @@ from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
 from nullrun import init_or_die, shutdown
+from nullrun.breaker.exceptions import NullRunApprovalExpiredError
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
 from nullrun.toolbox.langgraph import wrapper
@@ -352,5 +355,36 @@ if __name__ == "__main__":
                 print("\n[agent] final:", final.get("content", ""))
             else:
                 print("\n[agent] final:", getattr(final, "content", ""))
-    finally:
+    except NullRunApprovalExpiredError as exc:
+        # The approval grant aged out — either the operator never
+        # decided (local WS push timeout, default 300s; can be
+        # shortened via NULLRUN_APPROVAL_TIMEOUT_SECONDS=5 for the
+        # bug-repro run) or the operator's grant TTL elapsed
+        # between /gate and /execute (wire path).
+        #
+        # 2026-09-09 (ADR-045 PR-A + SDK NR-A012): print the
+        # catalog user-facing message (NR-A012) and exit 2 — a
+        # distinct exit code from the generic NullRunError exit
+        # 1 that ``nullrun.handle()`` produces, so CI can branch
+        # on "approval expired" vs "any other failure". Pre-fix
+        # this code path fell through to ``nullrun.handle()``'s
+        # generic exit-1 handler with the FALLBACK_MESSAGE
+        # ("Something went wrong. Please try again.") — the
+        # user-visible bug that triggered this campaign.
+        print(
+            f"[approval] {nullrun.format_user_message(exc)} "
+            f"(approval_id={exc.approval_id}, "
+            f"waited={exc.timeout_seconds}s)",
+            file=sys.stderr,
+        )
         shutdown()
+        sys.exit(2)
+    finally:
+        # ``shutdown()`` is idempotent — safe to call even if it
+        # already ran in the ``except`` branch above. The try/
+        # finally guarantees the SDK session closes before the
+        # process exits, regardless of which path we took.
+        try:
+            shutdown()
+        except Exception:
+            pass
