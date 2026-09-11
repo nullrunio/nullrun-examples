@@ -1,4 +1,34 @@
-"""Probe for TC-22 — chain org mismatch (CHAIN_ORG_MISMATCH) or max duration."""
+"""Probe for TC-22 — chain org mismatch (CHAIN_ORG_MISMATCH) or max duration.
+
+C-grade wire-contract probe.
+
+Verifies the server-side anti-spoofing invariant: a ``/gate`` call
+whose body claims a different ``organization_id`` than the
+HMAC-signed runtime org must be rejected with ``CHAIN_ORG_MISMATCH``.
+
+The probe intentionally drives ``rt._transport.check`` with a
+spoofer ``organization_id`` (``\"00000000-...\"``) on the wire body
+while the runtime's HMAC is signed with the real org id. The server
+compares the two and rejects.
+
+Why not a decorator: ``@nullrun.protect`` auto-fills the real
+``organization_id`` on the wire body via the SDK transport
+(``runtime.check_workflow_budget`` builds the request from the
+runtime singleton). The decorator cannot ship a spoofed
+``organization_id`` because that would defeat its own HMAC
+contract — and rightly so.
+
+The legitimate user-spirit pattern (Runtime A opens chain, Runtime
+B tries to continue it via ``@protect``) requires runtime singleton
+swapping mid-test, which the SDK does not expose. A future
+\"multi-runtime @protect\" helper could close this gap; for now
+the wire-level invariant is the only way to verify server-side
+CHAIN_ORG_MISMATCH detection.
+
+The SDK's own chain-mismatch path is exercised through live
+``@protect`` decoration in TC-22 via the ``_tc22_runner`` harness
+when the test workflow is set up to bind Runtime B to org A's chain.
+"""
 from __future__ import annotations
 
 import os

@@ -1,4 +1,31 @@
-"""Probe for TC-20 — /gate idempotency: same operation_id → same response, idempotent_replay=true."""
+"""Probe for TC-20 — /gate idempotency: same operation_id → same response, idempotent_replay=true.
+
+C-grade wire-contract probe.
+
+Verifies server-side idempotency replay-cache: two ``/gate`` calls
+with the same ``operation_id`` + ``tools`` + ``mode`` must return
+the same response, with ``idempotent_replay=true`` on the second.
+
+The probe intentionally drives ``rt._transport.check`` with a
+fixed ``operation_id`` (and a freshly-minted ``execution_id`` per
+attempt, to demonstrate that the IDEM-01 hash-narrowing landed:
+``trace_id`` + ``execution_id`` no longer participate in the
+replay-cache key, only the 11 user-controlled semantic fields do).
+
+Why not a decorator: ``@nullrun.protect`` mints a fresh
+``operation_id`` on every top-level invocation (P0-27 contextvar
+hoist — the user-spirit invariant that lets back-to-back retries
+of the same logical operation NOT collide on the same idempotency
+key). ``set_call_context`` accepts only ``model`` and ``tools``,
+NOT ``operation_id`` (see SDK nullrun/context.py:779). Therefore
+a controlled ``operation_id`` requires the raw wire path.
+
+The SDK's own idempotency replay is exercised through live
+``@protect`` decoration in TC-20 via the ``_tc20_runner`` harness,
+where the runner uses ``set_call_context`` to drive two distinct
+semantic operations through one decorator-bound function and
+asserts the second call's ``idempotent_replay=true`` flag.
+"""
 from __future__ import annotations
 
 import os

@@ -4,6 +4,27 @@ Verifies wire-level replay semantics:
   1. First /check with fake approval_id: server should return error_code
   2. Second /check with same approval_id: should still get same response
   3. /execute with same approval_id: NR-A015 typed exception
+
+C-grade wire-contract probe.
+
+The probe intentionally drives ``rt._transport.check`` with a
+hand-built ``approval_id`` (``f"apr_{uuid.uuid4()}"``) to test the
+server's approval replay-cache. Two /gate calls with the same
+non-existent approval_id should both observe the same wire
+response from the server's cache.
+
+Why not a decorator: ``@sensitive`` + ``@protect`` always mint a
+fresh operation_id + wire-side approval handshake (the decorator
+exposes no way to pin an externally-supplied ``approval_id`` on
+the wire). ``set_call_context`` accepts only ``model`` and
+``tools`` (see SDK nullrun/context.py:779) — NOT ``approval_id``.
+
+The legitimate user-spirit pattern (real operator approval via
+the WS push channel) is exercised through live ``@sensitive
+@protect`` decoration in TC-12 via the ``_tc12_runner`` harness.
+This probe verifies the SERVER-side replay-cache invariant for
+arbitrary approval_ids, which is a wire-contract concern that
+the SDK does not expose through any decorator.
 """
 from __future__ import annotations
 
