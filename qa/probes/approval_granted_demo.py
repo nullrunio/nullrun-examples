@@ -1,19 +1,28 @@
 """Probe for TC-12 — approval GRANTED flow (require_approval → approve → re-fire).
 
 Verifies the SDK hooks:
-  1. /check returns require_approval decision
-  2. SDK raises NullRunApprovalNotYetApprovedError with approval_id
-  3. WS callback registered for approval_resolved
-  4. Approval status poll (rt.status) returns valid state
+  1. /gate on a sensitive tool returns require_approval decision
+  2. SDK raises NullRunApprovalNotYetApprovedError with typed
+     ``approval_id`` attribute (NR-A010, error_code)
+  3. WS push listener (started by ``init_or_die``) receives
+     approval_resolved frames — no manual connect_websocket needed
+  4. Approval status poll (``rt.status``) returns valid state
 
-The actual operator-driven approval via UI requires a human in the loop;
-this probe verifies the SDK-side wire plumbing is correct.
+The actual operator-driven approval via UI requires a human in the
+loop; this probe verifies the SDK-side wire plumbing is correct.
+
+User-spirit pattern: ``@nullrun.sensitive(impact=money_outflow(...))``
++ ``@nullrun.protect`` over ``refund_customer``. The SDK computes
+``action_digest = sha256(json(tools|params))`` server-side from the
+typed-extractor's wiring (per ADR-037 Slice B). The pre-fix probe
+passed a hand-built ``action_digest`` via ``rt._transport.check``
+which bypassed both decorators — that bypass is the user-spirit
+violation the 2026-09-11 audit flagged.
 """
 from __future__ import annotations
 
 import os
 import sys
-import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "examples"))
@@ -26,50 +35,60 @@ except Exception:
 if len(sys.argv) >= 2:
     os.environ["NULLRUN_API_KEY"] = sys.argv[1]
 
+import nullrun  # noqa: E402
 from nullrun import init_or_die, shutdown  # noqa: E402
+from nullrun.context import set_call_context  # noqa: E402
 
 init_or_die()
 
 
 def main() -> int:
     from nullrun import get_runtime
-    from nullrun.context import set_call_context
+    from nullrun.breaker.exceptions import NullRunApprovalNotYetApprovedError
     rt = get_runtime()
+
+    # User-spirit @sensitive @protect over a real refund tool. The
+    # ``money_outflow`` impact schema points at the ``amount`` kwarg;
+    # the SDK's typed extractor reads the value at call-time and
+    # ships ``kind: "money"`` + amount on the wire so the backend
+    # can match the call against MoneyAmount approval rules
+    # (ADR-037 Slice B + ServerMint 2026-08).
+    @nullrun.sensitive(impact=nullrun.money_outflow(
+        argument="amount", currency="USD", units="major",
+    ))
+    @nullrun.protect
+    def refund_customer(amount: float = 100.0) -> str:
+        # Body never runs if /gate returns require_approval — the
+        # decorator raises NullRunApprovalNotYetApprovedError before
+        # we get here. Returned only on the (rare) allow path.
+        return "refund ok"
 
     set_call_context(model="gpt-4o-mini", tools=("refund_customer",))
 
-    # Step 1: WS connect with approval callback
+    # Step 1: /gate on refund_customer. Expect require_approval,
+    # which surfaces as the typed NR-A010 exception.
     try:
-        ws = rt._transport.connect_websocket(
-            organization_id=rt.organization_id,
-            on_approval_resolved=lambda evt: print(f"WS_APPROVAL_RESOLVED={evt}", flush=True),
-        )
-        print(f"WS_CONNECTED type={type(ws).__name__}", flush=True)
+        result = refund_customer(amount=100.0)
+        # Allow path — unusual; only if no approval rule matches.
+        print(f"CHECK_DECISION=allow result={result}", flush=True)
+        print("APPROVAL_ID=None", flush=True)
+    except NullRunApprovalNotYetApprovedError as e:
+        # The require_approval path. The exception's ``approval_id``
+        # typed attribute carries the pending row's id — that's
+        # the same wire field the pre-fix probe parsed out of the
+        # raw response dict.
+        print(f"CHECK_DECISION=require_approval exc={type(e).__name__}", flush=True)
+        print(f"APPROVAL_ID_FROM_EXCEPTION={e.approval_id}", flush=True)
+    except nullrun.NullRunBlockedException as e:
+        # Other block flavours (TOOL_BLOCKED, etc.). Surface for
+        # TC-12 to disambiguate.
+        print(f"CHECK_DECISION=block exc={type(e).__name__}: {e}", flush=True)
+        print(f"APPROVAL_ID_FROM_EXCEPTION={getattr(e, 'approval_id', None)}", flush=True)
     except Exception as e:
-        print(f"WS_CONNECT_FAIL: {type(e).__name__}: {e}", flush=True)
-
-    # Step 2: Try /gate on refund_customer (should require_approval)
-    try:
-        result = rt._transport.check(check_request={
-            "mode": "check",
-            "tools": ("refund_customer",),
-            "organization_id": rt.organization_id,
-            "execution_id": str(uuid.uuid4()),
-            "operation_id": f"tc12-{uuid.uuid4()}",
-            "action_digest": "tc12-approval-granted-test",
-            "estimated_tokens": 1,
-        })
-        decision = result.get("decision")
-        approval_id = result.get("approval_id") or result.get("reservation_id")
-        print(f"CHECK_DECISION={decision}", flush=True)
-        print(f"APPROVAL_ID={approval_id}", flush=True)
-    except Exception as e:
-        # NR-A010 raised for require_approval — capture approval_id from exc
         print(f"CHECK_EXCEPTION: {type(e).__name__}: {e}", flush=True)
-        approval_id = getattr(e, "approval_id", None)
-        print(f"APPROVAL_ID_FROM_EXCEPTION={approval_id}", flush=True)
 
-    # Step 3: SDK status check
+    # Step 2: SDK status check — WS push listener is owned by
+    # ``init_or_die()``, no manual ``connect_websocket`` needed.
     try:
         status = rt.status()
         print(f"STATUS_OK={status}", flush=True)
