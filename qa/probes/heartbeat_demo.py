@@ -41,12 +41,13 @@ def main() -> int:
             shutdown()
             return 0
 
-        # Heartbeat 3 times via direct transport call (private API; the
-        # public ``Runtime.heartbeat`` does not exist — see WS-03 finding
-        # in the prod-ready checklist).
+        # Heartbeat 3 times via public ``Runtime.heartbeat`` (DEF-HEART-01,
+        # SDK nullrun/runtime.py:2363). Replaces the prior ``rt._transport.
+        # heartbeat`` workaround that was used while the public method was
+        # still missing (the stale WS-03 comment is removed).
         for i in range(3):
             try:
-                result = rt._transport.heartbeat(chain_id)
+                result = rt.heartbeat(chain_id)
                 print(f"HEARTBEAT[{i}]: {result}", flush=True)
             except Exception as e:
                 print(f"HEARTBEAT[{i}]: {type(e).__name__}: {e}", flush=True)
