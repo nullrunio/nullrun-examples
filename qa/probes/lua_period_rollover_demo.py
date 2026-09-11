@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import os
 import sys
-import time
-import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "examples"))
@@ -17,47 +15,45 @@ except Exception:
 if len(sys.argv) >= 2:
     os.environ["NULLRUN_API_KEY"] = sys.argv[1]
 
+import nullrun  # noqa: E402
 from nullrun import init_or_die, shutdown  # noqa: E402
+from nullrun.context import set_call_context  # noqa: E402
 
 init_or_die()
 
 
 def main() -> int:
     from nullrun import get_runtime
-    from nullrun.context import set_call_context
     rt = get_runtime()
+
+    # User-spirit pattern: a single zero-arg probe decorated with
+    # ``@nullrun.protect``. Each invocation mints a fresh
+    # ``operation_id`` (P0-27) and runs the same Lua ``RESERVE``
+    # path. The semantic hash (IDEM-01) covers the user-controlled
+    # ``tools``/``model`` fields, so two invocations of this probe
+    # inside one period both succeed and accumulate against
+    # ``bp:{ts}:cost_cents``.
+    @nullrun.protect
+    def probe() -> None:
+        return None
 
     set_call_context(model="gpt-4o-mini", tools=("read_file",))
 
     # First reserve — should succeed
-    op1 = f"tc28-{uuid.uuid4()}"
     try:
-        rt._transport.check(check_request={
-            "mode": "check",
-            "tools": ("read_file",),
-            "organization_id": rt.organization_id,
-            "execution_id": str(uuid.uuid4()),
-            "operation_id": op1,
-            "action_digest": "tc28-period-rollover",
-            "estimated_tokens": 1,
-        })
+        probe()
         print("RESERVE_1_OK", flush=True)
+    except nullrun.NullRunBlockedException as e:
+        print(f"RESERVE_1_FAIL: {type(e).__name__}: {e}", flush=True)
     except Exception as e:
         print(f"RESERVE_1_FAIL: {type(e).__name__}: {e}", flush=True)
 
-    # Second reserve — different op_id, same period
-    op2 = f"tc28-{uuid.uuid4()}"
+    # Second reserve — fresh operation_id, same period
     try:
-        rt._transport.check(check_request={
-            "mode": "check",
-            "tools": ("read_file",),
-            "organization_id": rt.organization_id,
-            "execution_id": str(uuid.uuid4()),
-            "operation_id": op2,
-            "action_digest": "tc28-period-rollover",
-            "estimated_tokens": 1,
-        })
+        probe()
         print("RESERVE_2_OK", flush=True)
+    except nullrun.NullRunBlockedException as e:
+        print(f"RESERVE_2_FAIL: {type(e).__name__}: {e}", flush=True)
     except Exception as e:
         print(f"RESERVE_2_FAIL: {type(e).__name__}: {e}", flush=True)
 
