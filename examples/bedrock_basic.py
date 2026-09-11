@@ -1,3 +1,24 @@
+"""Enforce a Bedrock ``invoke_model`` call with @protect.
+
+NOTE: ``track_llm(...)`` below is the **boto3 escape hatch** — boto3
+uses urllib3, not httpx, so the SDK's automatic transport-patch
+(``nullrun.init()`` → ``patch_httpx()``) cannot intercept Bedrock
+calls. You have to fire ``track_llm`` yourself once you have parsed
+the response.
+
+For httpx-based SDKs (OpenAI, Anthropic, Mistral, Gemini, Cohere,
+LangChain, LangGraph, OpenAI Agents, AutoGen) ``track_llm`` is
+auto-fired by the SDK on every successful response — you do NOT
+need to call it manually and shouldn't.
+
+Run:
+    pip install "nullrun[bedrock]" boto3
+    export NULLRUN_API_KEY=nr_live_...
+    export AWS_ACCESS_KEY_ID=...
+    export AWS_SECRET_ACCESS_KEY=...
+    export AWS_DEFAULT_REGION=us-east-1
+    python examples/bedrock_basic.py
+"""
 from __future__ import annotations
 
 from _env import load_env
@@ -34,6 +55,9 @@ def answer(prompt: str) -> str:
     usage = payload.get("usage") or {}
     in_tok = int(usage.get("input_tokens") or 0)
     out_tok = int(usage.get("output_tokens") or 0)
+    # boto3 escape hatch — fire track_llm manually since the SDK cannot
+    # auto-intercept urllib3 calls. Do NOT call track_llm() if you are
+    # using an httpx-based SDK; that would double-count tokens.
     track_llm(input_tokens=in_tok, output_tokens=out_tok, model="claude-3-5-sonnet-bedrock")
     parts = [
         block.get("text", "")

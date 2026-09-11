@@ -17,18 +17,18 @@ from _env import load_env
 
 load_env()  # populate os.environ from examples/.env (no-op if absent)
 
-
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
-from nullrun import init_or_die, shutdown
+from nullrun import init_or_die, protect, shutdown
 
 init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
 
+@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
 def chat(state: MessagesState):
     return {"messages": [llm.invoke(state["messages"])]}
 

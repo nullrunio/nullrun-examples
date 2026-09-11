@@ -29,8 +29,10 @@ from nullrun import guarded, init_or_die, protect, shutdown
 
 init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 
-Settings.llm = OpenAI(model="gpt-4o-mini")
-llm = Settings.llm
+_llm = OpenAI(model="gpt-4o-mini")
+# llama-index reads `Settings.llm` at query-time; bind once, reference via Settings.
+Settings.llm = _llm
+llm = _llm
 
 
 @guarded

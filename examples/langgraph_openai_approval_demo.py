@@ -72,7 +72,11 @@ from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
 from nullrun import init_or_die, shutdown
-from nullrun.breaker.exceptions import NullRunApprovalExpiredError
+from nullrun.breaker.exceptions import (
+    NullRunApprovalExpiredError,
+    NullRunApprovalReplayRejectedError,
+    NullRunError,
+)
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
 from nullrun.toolbox.langgraph import wrapper
@@ -325,36 +329,44 @@ USER_PROMPT = (
 
 
 if __name__ == "__main__":
+    # NB: do NOT wrap this body in ``with nullrun.handle():``. The
+    # ``handle()`` context manager catches ``NullRunError`` and exits
+    # 1 BEFORE the typed handlers below can see the exception, so the
+    # user sees ``FALLBACK_MESSAGE`` ("Something went wrong. Please
+    # try again.") even on a precise typed failure
+    # (``NullRunApprovalReplayRejectedError`` / NR-A015). The fix is
+    # to keep the typed ``except`` arms at the same level as the
+    # ``try`` and use a final ``except NullRunError`` fallback for the
+    # generic exit-1 path.
     try:
-        with nullrun.handle():
-            # The agent runs against the API key's bound workflow
-            # (resolved by ``_authenticate`` from
-            # ``organization_api_keys.workflow_id``). We do NOT
-            # wrap the call in ``with workflow(...)`` because that
-            # would push a fresh workflow_id into the track
-            # contextvar and the backend's ingestion would drop the
-            # events with ``CRITICAL: Cannot resolve valid
-            # workflow_id`` (the string is not a UUID, so it does
-            # not match any row in the ``workflows`` table). The
-            # /gate side already uses the API key's bound workflow,
-            # so the approval rule and the budget counter stay
-            # consistent with the dashboard.
-            result = app.invoke(
-                {
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": USER_PROMPT},
-                    ],
-                },
-            )
-            # Print the final reply so the operator sees
-            # the summary the agent composed after the
-            # three calls.
-            final = result["messages"][-1]
-            if isinstance(final, dict):
-                print("\n[agent] final:", final.get("content", ""))
-            else:
-                print("\n[agent] final:", getattr(final, "content", ""))
+        # The agent runs against the API key's bound workflow
+        # (resolved by ``_authenticate`` from
+        # ``organization_api_keys.workflow_id``). We do NOT
+        # wrap the call in ``with workflow(...)`` because that
+        # would push a fresh workflow_id into the track
+        # contextvar and the backend's ingestion would drop the
+        # events with ``CRITICAL: Cannot resolve valid
+        # workflow_id`` (the string is not a UUID, so it does
+        # not match any row in the ``workflows`` table). The
+        # /gate side already uses the API key's bound workflow,
+        # so the approval rule and the budget counter stay
+        # consistent with the dashboard.
+        result = app.invoke(
+            {
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": USER_PROMPT},
+                ],
+            },
+        )
+        # Print the final reply so the operator sees
+        # the summary the agent composed after the
+        # three calls.
+        final = result["messages"][-1]
+        if isinstance(final, dict):
+            print("\n[agent] final:", final.get("content", ""))
+        else:
+            print("\n[agent] final:", getattr(final, "content", ""))
     except NullRunApprovalExpiredError as exc:
         # The approval grant aged out — either the operator never
         # decided (local WS push timeout, default 300s; can be
@@ -379,6 +391,55 @@ if __name__ == "__main__":
         )
         shutdown()
         sys.exit(2)
+    except NullRunApprovalReplayRejectedError as exc:
+        # The approval grant was already consumed by a prior /execute
+        # call — atomic check-and-set in ``consume_approved`` fired.
+        # Two emission sources today:
+        #
+        #   1. UI approve vs SDK poll race — the operator clicks
+        #      Approve in the dashboard; the SDK's WS-poll resolves
+        #      with "approved" and re-issues /execute; the backend's
+        #      ``consume_approved`` UPDATE returns zero rows (the
+        #      UI's earlier approve already set status='CONSUMED'),
+        #      so the gate surfaces APPROVAL_REPLAY_REJECTED.
+        #   2. Genuine retry loop — host code re-issued /execute
+        #      with the same execution_id after a previous successful
+        #      execute; this is a programmer bug, not a user-facing
+        #      retry path.
+        #
+        # Either way the wire response is HTTP 403 / 409 with envelope
+        # ``{"error_code": "APPROVAL_REPLAY_REJECTED"}``. Catalog code
+        # NR-A015 — ``format_user_message`` returns the friendly
+        # "approval has already been used" wording (no longer the
+        # generic FALLBACK_MESSAGE now that transport.py parses the
+        # 4xx envelope instead of synthesising a stripped-down dict).
+        #
+        # Exit code 3 distinguishes this terminal-replay case from
+        # the timeout/expiry case (exit 2) and the generic SDK
+        # failure case (exit 1 from ``nullrun.handle()``). CI can
+        # branch on ``exit 3`` to flag retry-loop / race signals.
+        print(
+            f"[approval] {nullrun.format_user_message(exc)} "
+            f"(approval_id={exc.approval_id}, "
+            f"execution_id={exc.workflow_id})",
+            file=sys.stderr,
+        )
+        shutdown()
+        sys.exit(3)
+    except NullRunError as exc:
+        # Generic SDK failure (transport, auth, budget, anything
+        # not covered by the typed approval handlers above). Print
+        # the catalog user-facing message — same wording
+        # ``nullrun.handle()`` would have produced — and exit 1.
+        # This arm is what replaces ``with nullrun.handle():``
+        # while still letting the typed arms run FIRST.
+        print(
+            f"[sdk] {nullrun.format_user_message(exc)} "
+            f"(error_code={exc.error_code})",
+            file=sys.stderr,
+        )
+        shutdown()
+        sys.exit(1)
     finally:
         # ``shutdown()`` is idempotent — safe to call even if it
         # already ran in the ``except`` branch above. The try/

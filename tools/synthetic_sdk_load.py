@@ -1,8 +1,8 @@
 """Bounded SDK-shaped load against an authorized NullRun backend.
 
 Every synthetic call uses the public SDK path: @protect sends /api/v1/gate,
-then track_llm sends /api/v1/track with random token usage. No LLM provider
-is imported or called.
+then track_llm sends /api/v1/track with random token usage.
+No LLM provider is imported or called.
 
 Run from the repo root so ``examples/.env`` is in the expected location:
 
@@ -21,7 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import nullrun
+from nullrun import guarded, init_or_die, protect, shutdown, track_llm
 
 # Load examples/.env via the shared loader. tools/ lives next to
 # examples/, so we add the repo root to sys.path first to make
@@ -33,7 +33,6 @@ from examples._env import load_env
 load_env(verbose=False)
 
 STOP = threading.Event()
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -55,9 +54,9 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-@nullrun.protect
+@protect
 def emit_synthetic(input_tokens: int, output_tokens: int, model: str) -> None:
-    nullrun.track_llm(
+    track_llm(
         input_tokens,
         output_tokens,
         model=model,
@@ -65,13 +64,11 @@ def emit_synthetic(input_tokens: int, output_tokens: int, model: str) -> None:
         metadata={"synthetic_load": True, "no_inference": True},
     )
 
-
+@protect
 def run_one(input_tokens: int, output_tokens: int, model: str, dry_run: bool) -> int:
     if not dry_run:
-        nullrun.set_call_context(model=model)
         emit_synthetic(input_tokens, output_tokens, model)
     return input_tokens + output_tokens
-
 
 def main() -> int:
     args = parse_args()
@@ -94,7 +91,7 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: STOP.set())
     if not args.dry_run:
-        nullrun.init_or_die()
+        init_or_die()
 
     started = time.monotonic()
     next_tick = started
@@ -128,7 +125,7 @@ def main() -> int:
                     print(f"progress completed={index}/{len(futures)} exceptions={errors} tokens={tokens}")
     finally:
         if not args.dry_run:
-            nullrun.shutdown()
+            shutdown()
 
     elapsed = time.monotonic() - started
     p95 = statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else max(latencies, default=0.0)
@@ -136,7 +133,7 @@ def main() -> int:
         f"done launched={len(futures)} exceptions={errors} tokens={tokens} elapsed={elapsed:.2f}s "
         f"launch_rate={len(futures) / elapsed if elapsed else 0:.2f}/s completion_wait_p95_ms={p95:.1f}"
     )
-    print("Note: SDK 0.13.11 logs /track HTTP failures internally; inspect stderr/backend metrics for accepted/error counts.")
+    print("Note: inspect stderr/backend metrics for accepted/error counts.")
     return 1 if errors else 0
 
 

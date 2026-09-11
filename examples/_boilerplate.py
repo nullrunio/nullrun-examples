@@ -73,4 +73,27 @@ def example_run(api_key: str | None = None, api_url: str | None = None) -> Itera
         shutdown()
 
 
-__all__ = ["example_run"]
+__all__ = ["example_run", "init_sdk_or_die", "RUN_ID"]
+
+
+# ---------------------------------------------------------------------------
+# Convenience helpers for SDK test plans (used by SDK_TEST.md §7.5/§7.6 scripts).
+# These are intentionally minimal wrappers — full setup (workflow isolation,
+# pre-flight) lives in the test runner, not in examples.
+# ---------------------------------------------------------------------------
+import os as _os
+import time as _time
+
+
+RUN_ID = _os.environ.get("NULLRUN_RUN_ID", _time.strftime("%Y%m%dT%H%M"))
+
+
+def init_sdk_or_die() -> None:
+    """Load .env + init SDK; exits if NULLRUN_API_KEY missing."""
+    load_env()
+    try:
+        import nullrun
+        nullrun.init_or_die()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[init_sdk_or_die] SDK init failed: {type(exc).__name__}: {exc}")
+        raise

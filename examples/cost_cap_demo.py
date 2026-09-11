@@ -26,16 +26,14 @@ from nullrun import guarded, init_or_die, protect, shutdown
 init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
 client = OpenAI()
 
-
 @guarded
 @protect
 def step(i: int) -> str:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": f"Step {i}: reply with the number."}],
+        messages=[{"role": "user", "content": f"Step {i}: reply with the number. And add a random fact about this number. "}],
     )
     return response.choices[0].message.content or ""
-
 
 if __name__ == "__main__":
     try:

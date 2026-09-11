@@ -1,13 +1,22 @@
 """Enforce a CrewAI ``Crew.kickoff`` with @protect.
 
-Once ``init_or_die`` runs, ``nullrun`` auto-installs
-``step_callback`` and ``task_callback`` on every ``Crew`` the user
-creates (unless they supplied their own). After ``kickoff`` returns,
-``crew.usage_metrics`` is read once and the aggregated prompt /
-completion tokens are emitted as a ``track_llm`` event.
+NOTE: CrewAI is auto-instrumented at ``Crew.__init__`` time — once
+``init_or_die`` runs, ``nullrun`` installs ``step_callback`` and
+``task_callback`` on every ``Crew`` the user creates (unless they
+supplied their own). After ``kickoff`` returns, ``crew.usage_metrics``
+is read once and the aggregated prompt / completion tokens are
+emitted as a ``track_llm`` event automatically.
 
-``@protect`` adds the *gate* layer (budget / kill / pause);
-``@guarded`` translates any ``NullRunError`` into a friendly exit.
+That means: ``track_llm`` (cost tracking) fires WITHOUT ``@protect``.
+You only need ``@protect`` if you want a **gate pre-flight** on
+``kickoff`` — i.e. the cost cap / kill / pause check BEFORE the
+crew starts. Without ``@protect``, the crew runs and ``track_llm``
+posts the cost afterwards; if the workflow budget was already
+exhausted, the crew still runs (the cap is informational).
+
+If your goal is just to track cost, ``@protect`` is optional; if
+your goal is to enforce the cap before the crew starts, keep
+``@protect`` and ``@guarded`` as shown below.
 
 Run:
     pip install "nullrun[crewai]" crewai
