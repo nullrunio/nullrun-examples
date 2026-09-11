@@ -18,6 +18,7 @@ def parse(stdout, dump_path):
         "second_exec_id": None,
         "second_replay": None,
         "exec_ids_match": None,
+        "operation_id_echoed": False,
         "verdict": "ERROR",
     }
     for line in stdout.splitlines():
@@ -33,17 +34,34 @@ def parse(stdout, dump_path):
             f["second_replay"] = line.split("=", 1)[1].lower() == "true"
     if f["first_exec_id"] and f["second_exec_id"]:
         f["exec_ids_match"] = f["first_exec_id"] == f["second_exec_id"]
-    # PASS conditions:
-    # - both calls OK
-    # - execution IDs match (idempotency)
-    # - second call has idempotent_replay=True OR exec_id matches
+    # Check operation_id echoed on both requests (same value)
+    if dump_path and dump_path.exists():
+        try:
+            captures = json.loads(dump_path.read_text(encoding="utf-8"))
+            op_ids = []
+            for c in captures:
+                if "/gate" in c.get("url", "") and c.get("method") == "POST":
+                    req = c.get("request") or {}
+                    if req.get("operation_id"):
+                        op_ids.append(req["operation_id"])
+            if len(op_ids) >= 2 and op_ids[0] == op_ids[1]:
+                f["operation_id_echoed"] = True
+        except Exception:
+            pass
+    # Verdict logic:
+    # - Both calls succeed with operation_id echoed (wire-shape OK)
+    # - execution_id match OR idempotent_replay flag = full idempotency
+    # - Otherwise REVIEW: wire-shape OK but server doesn't dedupe /gate by operation_id
     if f["first_ok"] and f["second_ok"]:
-        if f["second_replay"] is True:
-            f["verdict"] = "PASS"
-        elif f["exec_ids_match"]:
-            f["verdict"] = "PASS"  # server returned same execution_id = idempotent
+        if f["operation_id_echoed"]:
+            if f["second_replay"] is True or f["exec_ids_match"]:
+                f["verdict"] = "PASS"  # full idempotency
+            else:
+                # Wire shape accepts operation_id but server returns fresh execution_id
+                # each call — potential double-charge risk. Surface as defect.
+                f["verdict"] = "REVIEW"
         else:
-            f["verdict"] = "REVIEW"
+            f["verdict"] = "BLOCK"
     elif f["first_fail"] or f["second_fail"]:
         f["verdict"] = "BLOCK"
     else:

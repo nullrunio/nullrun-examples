@@ -36,6 +36,8 @@ def main() -> int:
         "tools": ("read_file",),
         "operation_id": operation_id,
         "action_digest": "tc20-test-digest",
+        "organization_id": rt.organization_id,  # private Transport.check does NOT auto-fill
+        "execution_id": rt._uuid7_str() if hasattr(rt, "_uuid7_str") else str(uuid.uuid4()),
     }
 
     # First call
