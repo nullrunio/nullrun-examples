@@ -2,6 +2,15 @@
 
 Drives runtime.check_workflow_budget() with various invalid chain_id formats
 and captures the resulting errors.
+
+The chain context is stamped via ``nullrun.context.set_chain_id`` /
+``set_chain_op`` (context.py:190, 255). Pre-fix this probe tried
+``set_call_context(chain_id=..., chain_op="start")`` — neither kwarg
+exists in the real signature (only ``model=`` and ``tools=``, see
+context.py:779-805). The call raised TypeError that was silently
+swallowed by the nested try/except/pass arms, so all 7 invalid
+chain_ids reached ``check_workflow_budget()`` as if no chain were
+set — the probe was testing the wrong thing entirely.
 """
 from __future__ import annotations
 
@@ -16,8 +25,9 @@ from examples._env import load_env  # type: ignore
 load_env()
 
 import nullrun
-from nullrun import init_or_die, shutdown, get_runtime, set_call_context
+from nullrun import init_or_die, shutdown, get_runtime
 from nullrun.breaker.exceptions import WorkflowKilledInterrupt, NullRunError
+from nullrun.context import set_chain_id, set_chain_op
 
 init_or_die()
 
@@ -25,19 +35,18 @@ init_or_die()
 def probe_with_chain(chain_id_value, label: str) -> dict:
     """Set chain context and call check_workflow_budget."""
     runtime = get_runtime()
+    # Stamp the chain context via the canonical API. set_chain_id
+    # does the input validation (UUID shape) and raises ValueError
+    # for non-UUID strings; we catch that as part of the probe's
+    # "is the SDK rejecting this?" contract.
     try:
-        # Try with kwarg (newer API)
-        try:
-            set_call_context(chain_id=chain_id_value, chain_op="start")
-        except TypeError:
-            try:
-                set_call_context(chain_id=chain_id_value)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        set_chain_id(chain_id_value)
     except Exception as e:
         return {"label": label, "set_err": type(e).__name__, "msg": str(e)[:120]}
+    try:
+        set_chain_op("start")
+    except Exception as e:
+        return {"label": label, "set_op_err": type(e).__name__, "msg": str(e)[:120]}
     start = time.monotonic()
     try:
         result = runtime.check_workflow_budget()
