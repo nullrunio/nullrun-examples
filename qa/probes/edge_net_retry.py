@@ -3,6 +3,14 @@
 Drives runtime.check_workflow_budget() with the SAME idempotency_key
 multiple times and verifies the same execution_id is returned (idempotency).
 Per CLAUDE.md §15: 'replay → return saved result'.
+
+The idempotency_key is stamped via ``nullrun.context.set_operation_id``
+(context.py:558). Pre-fix this probe tried ``set_call_context(idempotency_key=...)``
+and ``set_call_context(idem_key=...)`` — neither kwarg exists in the
+real signature (only ``model=`` and ``tools=``, see context.py:779-805).
+Both calls raised TypeError that was silently swallowed by the
+nested try/except/pass arms, so the SDK never saw the idempotency_key
+and the probe ran 5 unrelated /check calls instead of 5 replays.
 """
 from __future__ import annotations
 
@@ -18,6 +26,7 @@ load_env()
 
 from nullrun import init_or_die, shutdown, get_runtime
 from nullrun.breaker.exceptions import WorkflowKilledInterrupt
+from nullrun.context import set_operation_id
 
 init_or_die()
 
@@ -27,19 +36,12 @@ def probe_with_idem(idem_key: str, count: int) -> list:
     results = []
     runtime = get_runtime()
     for i in range(count):
-        # We need to use the same idempotency_key for all retries
-        # SDK may expose this via set_call_context or via an attribute
-        import nullrun
-        # Try multiple ways to set idempotency_key
-        try:
-            nullrun.set_call_context(idempotency_key=idem_key)
-        except TypeError:
-            try:
-                nullrun.set_call_context(idem_key=idem_key)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        # Stamp the operation_id (a.k.a. idempotency_key) for this
+        # whole retry loop so /check produces the same execution_id
+        # on every retry. ``set_operation_id`` is the canonical API
+        # in context.py:558; ``set_call_context`` only accepts
+        # ``model=`` and ``tools=``.
+        set_operation_id(idem_key)
 
         start = time.monotonic()
         try:
