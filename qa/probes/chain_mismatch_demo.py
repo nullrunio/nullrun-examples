@@ -69,8 +69,14 @@ def main() -> int:
             # Try to use chain from a DIFFERENT org (cross-org attack)
             fake_org_id = "00000000-0000-0000-0000-000000000000"
             try:
-                # Send a /gate with cross-org chain_id — server should reject
-                rt._transport.check(check_request={
+                # Send a /gate with cross-org chain_id — server should reject.
+                # NOTE: `Transport.check` returns a dict (NOT raises) for 4xx —
+                # the `decision_source == GATEWAY` + `decision == "block"`
+                # pair carries the wire-coded reason so the runtime can
+                # dispatch via `NullRunBudgetError` / `NullRunChainError`.
+                # Pre-fix the probe only inspected exceptions and printed
+                # `CROSS_ORG_GATE_OK (unexpected!)` for the server's 403.
+                check_resp = rt._transport.check(check_request={
                     "mode": "check",
                     "tools": ("read_file",),
                     "organization_id": fake_org_id,  # different org
@@ -79,7 +85,24 @@ def main() -> int:
                     "chain_op": "continue",
                     "action_digest": "tc22-chain-mismatch",
                 })
-                print("CROSS_ORG_GATE_OK (unexpected!)", flush=True)
+                decision = check_resp.get("decision")
+                error_code = (
+                    check_resp.get("error_code")
+                    or check_resp.get("details", {}).get("error_code")
+                )
+                status_code = check_resp.get("status_code")
+                if decision == "block" and error_code in {"ORG_MISMATCH", "CHAIN_ORG_MISMATCH"}:
+                    print(
+                        f"CROSS_ORG_GATE_BLOCKED: error_code={error_code} "
+                        f"status_code={status_code} (expected)",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"CROSS_ORG_GATE_OK (unexpected!): decision={decision} "
+                        f"error_code={error_code} status_code={status_code}",
+                        flush=True,
+                    )
             except Exception as e:
                 print(f"CROSS_ORG_GATE_FAIL: {type(e).__name__}: {e}", flush=True)
     except Exception as e:
