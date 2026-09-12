@@ -2,6 +2,16 @@
 
 Drives runtime.check_workflow_budget() in 5 parallel async tasks
 with different chain_ids.
+
+Each task stamps its own chain context via
+``nullrun.context.set_chain_id`` / ``set_chain_op`` (context.py:190,
+255) before the call. Pre-fix the probe tried
+``set_call_context(chain_id=..., chain_op="start")`` — neither kwarg
+exists in the real signature (only ``model=`` and ``tools=``, see
+context.py:779-805). The TypeError was silently swallowed by the
+nested try/except/pass arms, so the 5 parallel tasks ran without
+chain context at all and the probe was testing 5 unrelated parallel
+calls instead of 5 parallel chain starts.
 """
 from __future__ import annotations
 
@@ -17,8 +27,9 @@ from examples._env import load_env  # type: ignore
 load_env()
 
 import nullrun
-from nullrun import init_or_die, shutdown, get_runtime, set_call_context
+from nullrun import init_or_die, shutdown, get_runtime
 from nullrun.breaker.exceptions import WorkflowKilledInterrupt
+from nullrun.context import set_chain_id, set_chain_op
 
 init_or_die()
 
@@ -26,17 +37,8 @@ init_or_die()
 async def probe_async(chain_id: str) -> dict:
     """Async wrapper that sets a chain_id then calls check_workflow_budget."""
     runtime = get_runtime()
-    # Set chain context via set_call_context if API supports it
-    try:
-        set_call_context(chain_id=chain_id, chain_op="start")
-    except TypeError:
-        # older API
-        try:
-            set_call_context(chain_id=chain_id)
-        except Exception:
-            pass
-    except Exception:
-        pass
+    set_chain_id(chain_id)
+    set_chain_op("start")
     start = time.monotonic()
     try:
         result = runtime.check_workflow_budget()
