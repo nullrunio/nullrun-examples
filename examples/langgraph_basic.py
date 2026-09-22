@@ -1,30 +1,19 @@
-"""Auto-instrument a LangGraph with ``@nullrun.protect`` (zero-init UX).
+"""Auto-instrument a LangGraph with ``@protect``.
 
-SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
-call, so there is no need for an explicit ``init_or_die()``. The runtime
-is created (with ``NULLRUN_API_KEY`` from the environment), ``httpx`` is
-patched, and the LangGraph ``Pregel`` class is wrapped with
-``NullRunCallback`` -- all on the first protected invocation, behind a
-process-wide lock so concurrent ``@protect`` calls do not double-fire.
+The first ``@protect`` call lazy-triggers ``auto_instrument()``:
+the runtime is created (with ``NULLRUN_API_KEY`` from the
+environment), ``httpx`` is patched, and the LangGraph ``Pregel``
+class is wrapped with ``NullRunCallback`` — all on the first
+protected invocation, behind a process-wide lock so concurrent
+``@protect`` calls do not double-fire.
 
-The LangGraph callback injection in this example is the SAME one the
-deprecated ``nullrun.toolbox.langgraph.wrapper(graph)`` used to perform
-manually (``patch_langgraph_compiled`` in ``nullrun.instrumentation.auto``).
-The auto-patch is the canonical path; ``wrapper()`` is now an escape
-hatch for tests with custom runtimes, Pregel imported before init, or
-manual callback control. See ``langgraph_manual_wrapper.py`` for the
-explicit form.
+The auto-patch is the canonical path. For tests with custom
+runtimes, Pregel imported before init, or manual callback control,
+see ``langgraph_manual_wrapper.py``.
 
-What 0.18.1 gives you here:
-
-  * zero ``init_or_die()`` boilerplate
-  * zero framework-extras boilerplate (``pip install nullrun`` is enough
-    for the HTTP-level path; ``langgraph`` is installed here only because
-    the *example* uses a LangGraph agent -- NullRun's auto-patch subscribes
-    to ``langgraph.pregel.Pregel`` once it's importable)
-  * zero-activity diagnostic: if ``@protect`` runs 50+ times without an
-    observed ``track_llm`` event, the runtime logs a single WARNING
-    naming the three most likely root causes
+If ``@protect`` runs 50+ times without an observed ``track_llm``
+event, the runtime logs a single WARNING naming the three most
+likely root causes (the zero-activity diagnostic).
 
 Run:
     pip install nullrun langgraph langchain-openai
@@ -44,16 +33,10 @@ from langgraph.graph import END, MessagesState, StateGraph
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() here. The first @protect call below
-# lazily creates the runtime and auto-instruments LangGraph in a
-# single process-wide idempotent step. If NULLRUN_API_KEY is missing
-# the runtime raises a clear NullRunConfigError at the first gate
-# call -- no silent no-op.
-
 llm = ChatOpenAI(model="gpt-4o-mini")
 
 
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def chat(state: MessagesState):
     return {"messages": [llm.invoke(state["messages"])]}
 

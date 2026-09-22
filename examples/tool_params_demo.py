@@ -1,17 +1,16 @@
-"""Phase 1 / MVP 1.1 -- ToolParameters Approval Rules demo.
+"""ToolParameters Approval Rules demo.
 
-Demonstrates the three ways to attach a typed impact to a tool now
-that Phase 1 / MVP 1.1 (Tier 2 of Razryv 2) is live on the backend:
+Demonstrates the three decorator shapes that attach a typed
+``BusinessImpact`` to a tool:
 
     1. ``@protect``                                -- default extractor.
        Auto-attaches ``ToolParamsExtractor(include_all=True)``;
        every kwarg lands on the wire under its own name.
     2. ``@protect @sensitive(impact=tool_params({...}))`` -- explicit
        map. Renames kwargs and/or picks which args land on the wire.
-    3. ``@protect @sensitive(impact=money_outflow(...))``  -- Phase 1
-       Money variant. Typed extractor that converts
-       ``Decimal(units="major")`` to integer minor units and
-       rejects ``float`` (no IEEE-754 precision loss).
+    3. ``@protect @sensitive(impact=money_outflow(...))``  -- typed
+       money extractor. Converts ``Decimal(units="major")`` to integer
+       minor units and rejects ``float`` (no IEEE-754 precision loss).
 
 All three ship the same wire shape (a ``BusinessImpact`` envelope
 with a SHA-256 ``action_digest``); only the discriminator
@@ -61,9 +60,6 @@ from nullrun import shutdown
 from nullrun.breaker.exceptions import NullRunBlockedException
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow, tool_params
-
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime.
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -118,7 +114,7 @@ def delete_user_explicit(force: bool, user_id: str) -> str:
     return json.dumps({"status": "ok", "tool": "delete_user_explicit", "force": force})
 
 
-# Variant 3: ``@sensitive(impact=money_outflow(...))`` -- Phase 1 Money.
+# Variant 3: ``@sensitive(impact=money_outflow(...))`` -- typed money extractor.
 #
 # Use this when:
 #   - The rule is about money, not arbitrary tool args.

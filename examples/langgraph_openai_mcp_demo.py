@@ -310,12 +310,9 @@ from nullrun import shutdown
 from nullrun.decorators import protect
 from nullrun.toolbox.mcp import MCPAdapter
 
-# 0.18.1: lazy init -- the first @protect call below lazily
-# creates the runtime. ``NULLRUN_API_KEY`` is verified at the
-# first gate call, not at module load, so an unset key now
-# surfaces as a four-line developer report inside
-# ``nullrun.handle()`` rather than a clean ``init_or_die``
-# exit at startup.
+# ``NULLRUN_API_KEY`` is verified at the first gate call, not at
+# module load — an unset key surfaces as a four-line developer
+# report inside ``nullrun.handle()`` rather than at startup.
 if not os.environ.get("OPENAI_API_KEY"):
     sys.stderr.write(
         "OPENAI_API_KEY is not set — export it before running this"
@@ -624,14 +621,13 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
 
 
 def main() -> int:
-    # 0.18.1: lazy init -- the first @protect call inside the
-    # demo loop lazily creates the runtime. If NULLRUN_API_KEY
-    # is missing the first gate call raises
-    # ``NullRunConfigError`` which the demo's
-    # ``except Exception`` arm surfaces with the four-line
-    # developer report. We intentionally do NOT pre-init here
-    # so a missing key doesn't kill the process before the
-    # user can read the OPENAI_API_KEY warning above.
+    # The first @protect call inside the demo loop creates the
+    # runtime. If NULLRUN_API_KEY is missing, the first gate call
+    # raises ``NullRunConfigError`` which the demo's
+    # ``except Exception`` arm surfaces with the four-line developer
+    # report. We intentionally do not pre-init here so a missing key
+    # doesn't kill the process before the user can read the
+    # OPENAI_API_KEY warning above.
 
     state = MCPDemoState(messages=[])
     for prompt in DEMO_PROMPTS:

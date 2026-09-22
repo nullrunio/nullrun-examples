@@ -41,7 +41,7 @@ for the full pattern.
 | File | What it shows |
 |---|---|
 | `gate_check_demo.py` | `/gate` pre-flight probe, no LLM, tool-name semantics |
-| `tool_params_demo.py` | Phase 1 / MVP 1.1 ToolParameters — three decorator shapes (`@protect`, `@protect @sensitive(impact=tool_params({...}))`, `@protect @sensitive(impact=money_outflow(...))`). |
+| `tool_params_demo.py` | ToolParameters Approval Rules — three decorator shapes (`@protect`, `@protect @sensitive(impact=tool_params({...}))`, `@protect @sensitive(impact=money_outflow(...))`). |
 | `protect_only_public_api_demo.py` | SDK 0.18.1 `@protect`-only public API — auto-attach of default `ToolParamsExtractor`, bounded extraction (1024-byte truncation + cycle guard + aggregate DEBUG log), and the typed-extractor path. No LLM, no backend needed. |
 | `langgraph_openai_approval_demo.py` | LangGraph agent + `refund_customer` + approval rule |
 | `langgraph_openai_mcp_demo.py` | LangGraph + OpenAI + in-process MCP server (Разрыв 3) |

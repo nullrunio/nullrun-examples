@@ -59,9 +59,6 @@ import threading
 import nullrun
 from nullrun import shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime.
-
 
 @contextlib.contextmanager
 def _silent_cancelled_in_daemon():

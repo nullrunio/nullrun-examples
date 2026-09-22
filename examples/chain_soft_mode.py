@@ -34,8 +34,6 @@ from openai import OpenAI
 import nullrun
 from nullrun import chain, protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call lazily
-# creates the runtime and auto-instruments openai.
 client = OpenAI()
 
 

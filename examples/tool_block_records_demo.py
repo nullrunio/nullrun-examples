@@ -91,9 +91,6 @@ from nullrun.breaker.exceptions import (
     NullRunError,
 )
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime.
-
 
 DEFAULT_TOOLS = [
     "bash",

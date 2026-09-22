@@ -1,22 +1,9 @@
-"""Smallest possible @protect usage with raw Google Gemini (no init boilerplate).
+"""Smallest possible ``@protect`` usage with raw Google Gemini.
 
-SDK 0.18.1:
-
-  * No ``init_or_die()`` -- the first ``@protect`` call lazily
-    creates the runtime and patches httpx so the ``google-genai``
-    SDK fires ``track_llm`` events automatically. NullRun's
-    URL-keyed extractor reads the Gemini response body and pulls
-    out token counts from the JSON.
-
-  * No ``[gemini]`` extra -- NullRun never imported the
-    ``google-genai`` package; the HTTP-level instrumentation is
-    vendor-agnostic. ``pip install nullrun google-genai`` is the
-    only dependency.
-
-  * No ``@guarded`` -- the agent uses ``with nullrun.handle():``
-    instead so any SDK error surfaces as the four-line developer
-    report (error_code / what / where / why / how-to-fix) instead
-    of the legacy single-sentence catalog message.
+The first ``@protect`` call lazily creates the runtime and patches
+httpx so the ``google-genai`` SDK fires ``track_llm`` events
+automatically. NullRun's URL-keyed extractor reads the Gemini
+response body and pulls out token counts.
 
 Run:
     pip install nullrun google-genai
@@ -38,13 +25,10 @@ from google import genai
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime. If NULLRUN_API_KEY is missing the
-# runtime raises NullRunConfigError at the first gate call.
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def answer(prompt: str) -> str:
     response = client.models.generate_content(
         model="gemini-2.0-flash",
@@ -55,9 +39,6 @@ def answer(prompt: str) -> str:
 
 if __name__ == "__main__":
     try:
-        # ``handle()`` catches NullRunError and prints the structured
-        # developer report (error_code / what / where / why / how-to-fix)
-        # to stderr before exiting 1.
         with nullrun.handle():
             print(answer("In one sentence, what does NullRun do?"))
     finally:

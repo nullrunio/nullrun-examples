@@ -1,25 +1,18 @@
-"""Enforce a CrewAI ``Crew.kickoff`` with @protect (no init boilerplate).
+"""Enforce a CrewAI ``Crew.kickoff`` with ``@protect``.
 
-NOTE: CrewAI is auto-instrumented at ``Crew.__init__`` time — the
+CrewAI is auto-instrumented at ``Crew.__init__`` time — the
 ``[crewai]`` extra subscribes to ``crewai.EventBus`` (1.15+) and
-translates each lifecycle event into a ``runtime.track_event`` call.
-After ``kickoff`` returns, ``crew.usage_metrics`` is read once and the
-aggregated prompt / completion tokens are emitted as a ``track_llm``
-event automatically.
+translates each lifecycle event into a ``runtime.track_event``
+call. After ``kickoff`` returns, ``crew.usage_metrics`` is read
+once and the aggregated prompt / completion tokens are emitted
+as a ``track_llm`` event automatically.
 
-That means: ``track_llm`` (cost tracking) fires WITHOUT ``@protect``.
-You only need ``@protect`` if you want a **gate pre-flight** on
-``kickoff`` — i.e. the cost cap / kill / pause check BEFORE the
-crew starts. Without ``@protect``, the crew runs and ``track_llm``
+That means: ``track_llm`` (cost tracking) fires without
+``@protect``. ``@protect`` adds the **gate pre-flight** on
+``kickoff`` — the cost cap / kill / pause check BEFORE the crew
+starts. Without ``@protect``, the crew runs and ``track_llm``
 posts the cost afterwards; if the workflow budget was already
 exhausted, the crew still runs (the cap is informational).
-
-SDK 0.18.1:
-
-  * No ``init_or_die()`` -- the first ``@protect`` call lazily
-    creates the runtime and attaches the CrewAI EventBus hook.
-  * No ``@guarded`` -- ``with nullrun.handle():`` prints the
-    four-line developer report on any ``NullRunError``.
 
 Run:
     pip install "nullrun[crewai]" crewai
@@ -39,11 +32,8 @@ from crewai import Agent, Crew, Process, Task
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and attaches the crewai.EventBus hook.
 
-
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def run_crew(prompt: str) -> str:
     researcher = Agent(
         role="researcher",

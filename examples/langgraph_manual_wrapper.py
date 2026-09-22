@@ -4,16 +4,15 @@ The recommended path is ``langgraph_basic.py`` — ``@protect`` lazy-
 instruments LangGraph on the first call (via the ``[langgraph]``
 extra's hook on ``langgraph.prebuilt.compile``), so most users never
 need to touch the compiled app. Use THIS example only when the
-auto-hook can't see your compiled graph — e.g. you build it inside a
-worker thread or import LangGraph lazily after the first ``@protect``
-call already ran.
+auto-hook can't see your compiled graph — e.g. you build it inside
+a worker thread or import LangGraph lazily after the first
+``@protect`` call already ran.
 
-The modern replacement for the deprecated ``nullrun.toolbox.langgraph.wrapper()``
-is ``nullrun.patch_langgraph_compiled(app)`` — it returns a wrapper
-that instruments the compiled graph's ``invoke`` / ``ainvoke`` /
+``nullrun.patch_langgraph_compiled(app)`` returns a wrapper that
+instruments the compiled graph's ``invoke`` / ``ainvoke`` /
 ``stream`` / ``astream`` methods without replacing the object. This
-preserves ``isinstance(app, CompiledGraph)`` checks elsewhere in your
-code that the old wrapper would have broken.
+preserves ``isinstance(app, CompiledGraph)`` checks elsewhere in
+your code.
 
 Run:
     pip install "nullrun[langgraph]" langgraph langchain-openai
@@ -33,9 +32,6 @@ from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
 from nullrun import shutdown
-
-# 0.18.1: NO init_or_die() -- the first protected call lazily
-# creates the runtime and auto-instruments langgraph.
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 

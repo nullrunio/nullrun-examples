@@ -1,10 +1,11 @@
-"""Enforce a llama-index query with @protect (no init boilerplate).
+"""Enforce a llama-index query with ``@protect``.
 
-SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
-call. The runtime is created (with ``NULLRUN_API_KEY`` from the
-environment), and llama-index is auto-instrumented through its event
-dispatcher — every ``LLMChatEndEvent`` and ``FunctionCallEvent`` fires
-a ``track_llm`` / ``track_tool`` event without any user code change.
+The first ``@protect`` call lazy-triggers ``auto_instrument()``:
+the runtime is created (with ``NULLRUN_API_KEY`` from the
+environment), and llama-index is auto-instrumented through its
+event dispatcher — every ``LLMChatEndEvent`` and
+``FunctionCallEvent`` fires a ``track_llm`` / ``track_tool`` event
+without any user code change.
 
 ``@protect`` adds the *gate* layer (budget / kill / pause);
 ``with nullrun.handle():`` translates any ``NullRunError`` into the
@@ -31,18 +32,13 @@ from llama_index.llms.openai import OpenAI
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and auto-instruments llama-index in a
-# single process-wide idempotent step. If NULLRUN_API_KEY is missing
-# the runtime raises a clear NullRunConfigError at the first gate call.
-
 _llm = OpenAI(model="gpt-4o-mini")
 # llama-index reads `Settings.llm` at query-time; bind once, reference via Settings.
 Settings.llm = _llm
 llm = _llm
 
 
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def answer(prompt: str) -> str:
     response = llm.chat([ChatMessage(role="user", content=prompt)])
     return response.message.content or ""

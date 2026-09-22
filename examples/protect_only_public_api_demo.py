@@ -1,4 +1,4 @@
-"""Demonstrate the SDK 0.18.1 ``@protect``-only public API.
+"""Demonstrate the ``@protect``-only public API.
 
 This example proves the four load-bearing properties of the
 ``@protect`` public contract WITHOUT calling any LLM and WITHOUT a

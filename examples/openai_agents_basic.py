@@ -1,14 +1,13 @@
-"""Enforce a multi-step OpenAI Agents run with @protect (no init boilerplate).
+"""Enforce a multi-step OpenAI Agents run with ``@protect``.
 
-SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
-call, so there is no need for an explicit ``init_or_die()``. The
-OpenAI Agents SDK is auto-instrumented via the ``[agents]`` extra —
-every ``Runner.run_*`` call fires ``track_llm`` events through the
-httpx transport hook plus the Agents tracer.
+The first ``@protect`` call lazy-triggers ``auto_instrument()``:
+the OpenAI Agents SDK is auto-instrumented via the ``[agents]``
+extra — every ``Runner.run_*`` call fires ``track_llm`` events
+through the httpx transport hook plus the Agents tracer.
 
 ``@protect`` adds the *gate* (budget / kill / pause enforcement);
-``with nullrun.handle():`` catches any ``NullRunError`` and prints the
-four-line developer report (error_code / what / where / why /
+``with nullrun.handle():`` catches any ``NullRunError`` and prints
+the four-line developer report (error_code / what / where / why /
 how-to-fix) before exiting 1.
 
 Run:
@@ -29,11 +28,8 @@ from agents import Agent, Runner
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and auto-instruments openai-agents.
 
-
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def run_agent(prompt: str) -> str:
     agent = Agent(
         name="assistant",

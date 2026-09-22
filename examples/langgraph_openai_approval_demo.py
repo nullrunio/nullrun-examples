@@ -1,7 +1,7 @@
 """LangGraph + OpenAI: trigger an approval rule 3 times in a row.
 
 The script stands up a small LangGraph agent that exposes ONE
-``refund_customer`` tool annotated with a Phase 1 / MVP 1.0
+``refund_customer`` tool annotated with a typed
 ``@sensitive(impact=money_outflow(...))`` extractor. The agent is
 asked to issue three refunds in a single run ($100, $50.99, $499 USD).
 Once the operator configures an approval rule of the form
@@ -91,7 +91,8 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. The tool the agent will call.
 #
-# The decorator stack is the canonical Phase 1 / MVP 1.0 form:
+# The decorator stack attaches a typed money extractor and the
+# gate boundary:
 #
 #   @nullrun.sensitive(impact=money_outflow(argument="refund_amount",
 #                                            currency="USD",
@@ -123,12 +124,11 @@ def refund_customer(refund_amount: Decimal, customer_id: str) -> str:
     """Issue a refund for ``customer_id`` of ``refund_amount`` USD.
 
     The body runs only after the gate has returned ``allow``.
-    Phase 1 / MVP 1.0 guarantees that re-eval after the
-    operator approves the matching row fits the same digest
-    (the SDK computes the digest from the same arguments the
-    LLM passed here), so the operator cannot accidentally
-    approve a different tool call than the one that was
-    requested.
+    Re-eval after the operator approves the matching row fits the
+    same digest (the SDK computes the digest from the same
+    arguments the LLM passed here), so the operator cannot
+    accidentally approve a different tool call than the one
+    that was requested.
     """
     # 50.99 -> 5099 cents happens inside the @sensitive
     # extractor; the body just sees the original Decimal.

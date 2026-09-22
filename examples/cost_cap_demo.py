@@ -1,24 +1,12 @@
-"""Demonstrate a hard budget cap on an agent (no init boilerplate).
+"""Demonstrate a hard budget cap on an agent.
 
 The agent below loops until the per-workflow budget is exhausted. The
 backend raises a 402 ``BUDGET_EXHAUSTED`` (or NR-B004 / NR-R001 wire
 codes) on ``/gate``, which the SDK translates into
-``NullRunBudgetError``. The 0.18.1 ``handle()`` then prints the
-four-line developer report (error_code / what / where / why /
-how-to-fix) so the operator immediately sees WHICH budget was
-exhausted and WHICH workflow needs adjustment.
-
-SDK 0.18.1 changes:
-
-  * No ``init_or_die()`` -- the runtime is created lazily by the
-    first ``@protect`` call. ``pip install nullrun openai`` is the
-    only dependency; the ``[openai]`` extra was removed because
-    NullRun never imports ``openai`` (the HTTP-level instrumentation
-    covers OpenAI's responses).
-  * No ``@guarded`` -- replaced with ``with nullrun.handle():`` so
-    the ``NullRunBudgetError`` surfaces as the structured
-    developer-facing report instead of the catalog headline
-    "You've reached the usage limit for this conversation" alone.
+``NullRunBudgetError``. ``handle()`` prints the four-line developer
+report (error_code / what / where / why / how-to-fix) so the operator
+immediately sees which budget was exhausted and which workflow needs
+adjustment.
 
 Run:
     pip install nullrun openai
@@ -38,18 +26,15 @@ from openai import OpenAI
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and patches httpx for OpenAI's
-# vendor SDK. We pass api_key="unused" so the OpenAI() constructor
-# succeeds even when OPENAI_API_KEY is unset -- otherwise OpenAI's
-# own constructor raises ``OpenAIError`` before we ever reach the
-# gate, and the gate / budget path is never exercised. The OpenAI
-# SDK never sends a real wire request with this placeholder key;
-# the budget cap fires first.
+# Pass api_key="placeholder" so the OpenAI() constructor succeeds even
+# when OPENAI_API_KEY is unset — otherwise OpenAI's own constructor
+# raises ``OpenAIError`` before the gate is ever reached, and the
+# budget path is never exercised. The OpenAI SDK never sends a real
+# wire request with this placeholder key; the budget cap fires first.
 client = OpenAI(api_key="placeholder-not-used-for-budget-demo")
 
 
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def step(i: int) -> str:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -60,13 +45,12 @@ def step(i: int) -> str:
 
 if __name__ == "__main__":
     try:
-        # ``handle()`` catches ``NullRunBudgetError`` (NR-B004 wire
-        # code 402 BUDGET_EXHAUSTED) and prints the structured
-        # developer report -- error_code, which workflow hit the
-        # cap, which gate failed, and the user_action with the
-        # dashboard URL for adjusting the budget. The loop exits
-        # with code 1 the moment the budget is hit, so we don't
-        # need to inspect the response.
+        # ``handle()`` catches ``NullRunBudgetError`` (NR-B004 wire code
+        # 402 BUDGET_EXHAUSTED) and prints the structured developer
+        # report — error_code, which workflow hit the cap, which gate
+        # failed, and the user_action with the dashboard URL for
+        # adjusting the budget. The loop exits the moment the budget
+        # is hit, so the response is never inspected.
         with nullrun.handle():
             for i in range(100):
                 print(i, step(i))

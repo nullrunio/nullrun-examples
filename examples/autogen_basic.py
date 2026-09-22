@@ -1,10 +1,9 @@
-"""Enforce an AutoGen AssistantAgent run with @protect (no init boilerplate).
+"""Enforce an AutoGen AssistantAgent run with ``@protect``.
 
-SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
-call, so there is no need for an explicit ``init_or_die()``. The runtime
-is created (with ``NULLRUN_API_KEY`` from the environment), ``httpx`` is
-patched for the OpenAI client, and the AutoGen agent-runtime hook is
-attached.
+The first ``@protect`` call lazy-triggers ``auto_instrument()``:
+the runtime is created (with ``NULLRUN_API_KEY`` from the
+environment), ``httpx`` is patched for the OpenAI client, and the
+AutoGen agent-runtime hook is attached.
 
 Run:
     pip install "nullrun[autogen]" autogen-agentchat autogen-ext-openai
@@ -27,11 +26,8 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 import nullrun
 from nullrun import protect, shutdown
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and auto-instruments autogen-agentchat.
 
-
-@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
+@protect
 def run_agent(prompt: str) -> str:
     model_client = OpenAIChatCompletionClient(model="gpt-4o-mini")
     agent = AssistantAgent(
