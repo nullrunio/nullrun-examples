@@ -65,6 +65,36 @@ importable in the same process, the corresponding hook attaches
 automatically on the first `@protect` call (a single WARNING logs
 otherwise — see the zero-activity diagnostic in the error catalog).
 
+## The canonical API: `@protect` only (SDK 0.18.1+)
+
+SDK 0.18.1 collapses everything to a single entry point:
+
+```python
+@protect
+def refund_customer(refund_amount: Decimal, customer_id: str) -> str:
+    ...
+```
+
+`@protect` auto-attaches a default `ToolParamsExtractor(include_all=True)`
+so every protected tool is eligible for ToolParameters Approval Rules
+on the backend without any second decorator. SDK collects facts; the
+server decides.
+
+* **`@protect`** — canonical public entry point. Cheap (no `/execute`
+  round-trip) and good for ~all protected tools.
+* **`@protect @sensitive(impact=...)`** — advanced API for library
+  authors who need a typed `BusinessImpact` (e.g. `money_outflow(...)`)
+  with a SHA-256 `action_digest`. The decorator chain walks
+  inside-out, so the explicit extractor wins over the auto-attached
+  default.
+* **`@sensitive`** (bare) — **deprecated** in 0.18.1; emits
+  `DeprecationWarning`, removed in 0.19.x. Drop it and rely on
+  `@protect` — the wire payload is identical.
+
+See [`protect_only_public_api_demo.py`](./examples/protect_only_public_api_demo.py)
+for a runnable verification of all four properties (auto-attach,
+1024-byte truncation, cycle guard, DeprecationWarning capture).
+
 ## Examples
 
 | File | Framework | What it shows |
@@ -87,7 +117,8 @@ otherwise — see the zero-activity diagnostic in the error catalog).
 | [`on_error_hook.py`](./examples/on_error_hook.py) | any | `nullrun.on_error` hook + `handle()` for Sentry / dashboards |
 
 Larger demos (LangGraph + approval rule, LangGraph + MCP, ToolParameters,
-gate pre-flight) live under [`examples/INDEX.md`](./examples/INDEX.md#demos--larger-end-to-end-walk-throughs).
+`@protect`-only public API, gate pre-flight) live under
+[`examples/INDEX.md`](./examples/INDEX.md#demos--larger-end-to-end-walk-throughs).
 QA probes are also listed there under **Probes** — they are not
 documented here because they assume specific workflow configurations.
 
