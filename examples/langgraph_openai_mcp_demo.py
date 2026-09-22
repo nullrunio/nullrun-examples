@@ -306,14 +306,16 @@ from dataclasses import dataclass
 
 from langchain_openai import ChatOpenAI
 
-from nullrun import init_or_die, shutdown
+from nullrun import shutdown
 from nullrun.decorators import protect
 from nullrun.toolbox.mcp import MCPAdapter
 
-# Defer init_or_die() to main() so an unset NULLRUN_API_KEY doesn't
-# kill the process before the user can read the OPENAI_API_KEY
-# warning below. Same trick is used by the other examples in this
-# directory (see examples/langgraph_openai_approval_demo.py).
+# 0.18.1: lazy init -- the first @protect call below lazily
+# creates the runtime. ``NULLRUN_API_KEY`` is verified at the
+# first gate call, not at module load, so an unset key now
+# surfaces as a four-line developer report inside
+# ``nullrun.handle()`` rather than a clean ``init_or_die``
+# exit at startup.
 if not os.environ.get("OPENAI_API_KEY"):
     sys.stderr.write(
         "OPENAI_API_KEY is not set — export it before running this"
@@ -622,10 +624,14 @@ def dispatch_tool_call(message: dict, state: MCPDemoState) -> None:
 
 
 def main() -> int:
-    # Connect to NULLRUN now. This is a fail-fast: if the key is
-    # missing, ``init_or_die`` prints a friendly message + exits
-    # before we make any OpenAI calls.
-    init_or_die()
+    # 0.18.1: lazy init -- the first @protect call inside the
+    # demo loop lazily creates the runtime. If NULLRUN_API_KEY
+    # is missing the first gate call raises
+    # ``NullRunConfigError`` which the demo's
+    # ``except Exception`` arm surfaces with the four-line
+    # developer report. We intentionally do NOT pre-init here
+    # so a missing key doesn't kill the process before the
+    # user can read the OPENAI_API_KEY warning above.
 
     state = MCPDemoState(messages=[])
     for prompt in DEMO_PROMPTS:

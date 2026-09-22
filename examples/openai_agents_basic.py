@@ -1,13 +1,18 @@
-"""Enforce a multi-step OpenAI Agents run with @protect.
+"""Enforce a multi-step OpenAI Agents run with @protect (no init boilerplate).
 
-Once ``init_or_die`` runs, the OpenAI Agents SDK is auto-instrumented
-(every ``Runner.run_*`` call fires ``track_llm`` events through the
-httpx transport hook plus the Agents tracer). ``@protect`` adds the
-*gate* (budget / kill / pause enforcement); ``@guarded`` adds
-zero-boilerplate error handling for the script.
+SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
+call, so there is no need for an explicit ``init_or_die()``. The
+OpenAI Agents SDK is auto-instrumented via the ``[agents]`` extra —
+every ``Runner.run_*`` call fires ``track_llm`` events through the
+httpx transport hook plus the Agents tracer.
+
+``@protect`` adds the *gate* (budget / kill / pause enforcement);
+``with nullrun.handle():`` catches any ``NullRunError`` and prints the
+four-line developer report (error_code / what / where / why /
+how-to-fix) before exiting 1.
 
 Run:
-    pip install nullrun openai-agents
+    pip install "nullrun[agents]" openai-agents
     export NULLRUN_API_KEY=nr_live_...
     export OPENAI_API_KEY=sk-...
     python examples/openai_agents_basic.py
@@ -21,13 +26,14 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 from agents import Agent, Runner
 
-from nullrun import guarded, init_or_die, protect, shutdown
+import nullrun
+from nullrun import protect, shutdown
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime and auto-instruments openai-agents.
 
 
-@guarded
-@protect
+@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
 def run_agent(prompt: str) -> str:
     agent = Agent(
         name="assistant",
@@ -39,6 +45,7 @@ def run_agent(prompt: str) -> str:
 
 if __name__ == "__main__":
     try:
-        print(run_agent("What is the capital of France?"))
+        with nullrun.handle():
+            print(run_agent("What is the capital of France?"))
     finally:
         shutdown()

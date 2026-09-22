@@ -59,12 +59,13 @@ import json
 from decimal import Decimal
 
 import nullrun
-from nullrun import init_or_die, shutdown
+from nullrun import shutdown
 from nullrun.breaker.exceptions import NullRunBlockedException
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow, tool_params
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime.
 
 
 # ──────────────────────────────────────────────────────────────────────────────

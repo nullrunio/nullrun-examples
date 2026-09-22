@@ -1,10 +1,21 @@
-"""Smallest possible @protect usage with raw OpenAI.
+"""Smallest possible @protect usage with raw OpenAI (no init boilerplate).
 
-``init_or_die`` exits cleanly with the catalog message if
-``NULLRUN_API_KEY`` is missing. ``@guarded`` catches any
-``NullRunError`` raised later. ``WorkflowKilledInterrupt`` (a
-BaseException) propagates — kill must reach the top of the agent
-loop.
+SDK 0.18.1:
+
+  * No ``init_or_die()`` -- the first ``@protect`` call lazily
+    creates the runtime and patches httpx so the OpenAI SDK fires
+    ``track_llm`` events automatically. NullRun's URL-keyed
+    extractor reads the OpenAI response body and pulls out
+    ``prompt_tokens`` / ``completion_tokens`` from the JSON.
+
+  * No ``[openai]`` extra -- NullRun never imported the ``openai``
+    package; the HTTP-level instrumentation is vendor-agnostic.
+    ``pip install nullrun openai`` is the only dependency.
+
+  * No ``@guarded`` -- the agent uses ``with nullrun.handle():``
+    instead so any SDK error surfaces as the four-line developer
+    report (error_code / what / where / why / how-to-fix) instead
+    of the legacy single-sentence catalog message.
 
 Run:
     pip install nullrun openai
@@ -23,14 +34,16 @@ import os
 
 from openai import OpenAI
 
-from nullrun import guarded, init_or_die, protect, shutdown
+import nullrun
+from nullrun import protect, shutdown
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime. If NULLRUN_API_KEY is missing the
+# runtime raises NullRunConfigError at the first gate call.
 client = OpenAI()
 
 
-@guarded
-@protect
+@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
 def answer(prompt: str) -> str:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -41,6 +54,10 @@ def answer(prompt: str) -> str:
 
 if __name__ == "__main__":
     try:
-        print(answer("In one sentence, what does NullRun do?"))
+        # ``handle()`` catches NullRunError and prints the structured
+        # developer report (error_code / what / where / why / how-to-fix)
+        # to stderr before exiting 1.
+        with nullrun.handle():
+            print(answer("In one sentence, what does NullRun do?"))
     finally:
         shutdown()

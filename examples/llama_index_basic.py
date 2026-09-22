@@ -1,12 +1,15 @@
-"""Enforce a llama-index query with @protect.
+"""Enforce a llama-index query with @protect (no init boilerplate).
 
-Once ``init_or_die`` runs, ``nullrun`` auto-instruments
-``llama_index.core`` through its event dispatcher — every
-``LLMChatEndEvent`` and ``FunctionCallEvent`` fires a
-``track_llm`` / ``track_tool`` event without any user code change.
+SDK 0.18.1: ``@protect`` lazy-triggers ``auto_instrument()`` on its first
+call. The runtime is created (with ``NULLRUN_API_KEY`` from the
+environment), and llama-index is auto-instrumented through its event
+dispatcher — every ``LLMChatEndEvent`` and ``FunctionCallEvent`` fires
+a ``track_llm`` / ``track_tool`` event without any user code change.
 
 ``@protect`` adds the *gate* layer (budget / kill / pause);
-``@guarded`` translates any ``NullRunError`` into a friendly exit.
+``with nullrun.handle():`` translates any ``NullRunError`` into the
+four-line developer report (error_code / what / where / why /
+how-to-fix) before exiting 1.
 
 Run:
     pip install "nullrun[llama-index]" llama-index-llms-openai
@@ -25,9 +28,13 @@ from llama_index.core import Settings
 from llama_index.core.llms import ChatMessage
 from llama_index.llms.openai import OpenAI
 
-from nullrun import guarded, init_or_die, protect, shutdown
+import nullrun
+from nullrun import protect, shutdown
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime and auto-instruments llama-index in a
+# single process-wide idempotent step. If NULLRUN_API_KEY is missing
+# the runtime raises a clear NullRunConfigError at the first gate call.
 
 _llm = OpenAI(model="gpt-4o-mini")
 # llama-index reads `Settings.llm` at query-time; bind once, reference via Settings.
@@ -35,8 +42,7 @@ Settings.llm = _llm
 llm = _llm
 
 
-@guarded
-@protect
+@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
 def answer(prompt: str) -> str:
     response = llm.chat([ChatMessage(role="user", content=prompt)])
     return response.message.content or ""
@@ -44,6 +50,7 @@ def answer(prompt: str) -> str:
 
 if __name__ == "__main__":
     try:
-        print(answer("In one sentence, what does NullRun do?"))
+        with nullrun.handle():
+            print(answer("In one sentence, what does NullRun do?"))
     finally:
         shutdown()

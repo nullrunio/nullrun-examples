@@ -12,7 +12,7 @@ chain in Redis (idle TTL 300s) and credits the projected cost to
 ``overdraft_used`` instead of hard-rejecting.
 
 Run:
-    pip install "nullrun[openai]" openai
+    pip install "nullrun" openai
     export NULLRUN_API_KEY=nr_live_...
     export OPENAI_API_KEY=sk-...
     python examples/chain_soft_mode.py
@@ -31,13 +31,14 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 from openai import OpenAI
 
-from nullrun import chain, guarded, init_or_die, protect, shutdown
+import nullrun
+from nullrun import chain, protect, shutdown
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call lazily
+# creates the runtime and auto-instruments openai.
 client = OpenAI()
 
 
-@guarded
 @protect
 def step(i: int) -> str:
     response = client.chat.completions.create(
@@ -50,7 +51,8 @@ def step(i: int) -> str:
 if __name__ == "__main__":
     try:
         with chain("chain-soft-mode-demo-loop", op="start"):
-            for i in range(50):
-                print(i, step(i))
+            with nullrun.handle():
+                for i in range(50):
+                    print(i, step(i))
     finally:
         shutdown()

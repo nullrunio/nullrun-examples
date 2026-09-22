@@ -71,7 +71,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessagesState, StateGraph
 
 import nullrun
-from nullrun import init_or_die, shutdown
+from nullrun import shutdown
 from nullrun.breaker.exceptions import (
     NullRunApprovalExpiredError,
     NullRunApprovalReplayRejectedError,
@@ -79,9 +79,12 @@ from nullrun.breaker.exceptions import (
 )
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
-from nullrun.toolbox.langgraph import wrapper
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime and auto-instruments langgraph.
+# ``patch_langgraph_compiled`` replaces the deprecated
+# ``nullrun.toolbox.langgraph.wrapper()`` and preserves the
+# ``CompiledGraph`` type so existing isinstance checks work.
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
@@ -300,7 +303,7 @@ graph = StateGraph(MessagesState)
 graph.add_node("agent", agent)
 graph.add_edge("agent", END)
 graph.set_entry_point("agent")
-app = wrapper(graph.compile())
+app = nullrun.patch_langgraph_compiled(graph.compile())
 
 
 # ──────────────────────────────────────────────────────────────────────────────

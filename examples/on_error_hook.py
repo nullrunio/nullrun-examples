@@ -3,8 +3,9 @@
 The hook fires BEFORE every ``NullRunError`` raise with the
 structured fields the catalog carries (``error_code``,
 ``retryable``, ``user_action``, ``docs_url``, ``stage``,
-``workflow_id``). Pair it with ``@guarded`` so each hook fires once
-on failure, and the script still exits cleanly.
+``workflow_id``). Pair it with ``with nullrun.handle():`` so each
+hook fires once on failure, and the script still exits cleanly
+with the four-line developer report.
 
 This is the recommended integration point for Sentry / dashboards /
 PagerDuty — the catalog fields are stable, machine-readable, and
@@ -12,7 +13,7 @@ already cover the "what does this error mean + what should the user
 do" surface so you don't have to grep docs to build the mapping.
 
 Run:
-    pip install "nullrun[openai]" openai
+    pip install "nullrun" openai
     export NULLRUN_API_KEY=nr_live_...
     export OPENAI_API_KEY=sk-...
     python examples/on_error_hook.py
@@ -30,7 +31,7 @@ import os
 from openai import OpenAI
 
 import nullrun
-from nullrun import guarded, init_or_die, protect, shutdown
+from nullrun import protect, shutdown
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("nullrun.example")
@@ -57,11 +58,11 @@ def _to_log(err, ctx):
     )
 
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime and auto-instruments openai.
 client = OpenAI()
 
 
-@guarded
 @protect
 def answer(prompt: str) -> str:
     response = client.chat.completions.create(
@@ -76,6 +77,7 @@ if __name__ == "__main__":
         # Force a known error path by setting a budget-capped policy
         # on the dashboard first -- otherwise this example succeeds
         # and the hook never fires.
-        print(answer("In one sentence, what does NullRun do?"))
+        with nullrun.handle():
+            print(answer("In one sentence, what does NullRun do?"))
     finally:
         shutdown()

@@ -82,7 +82,6 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 import sys
 
 from nullrun import (
-    init_or_die,
     protect,
     set_call_context,
     shutdown,
@@ -92,7 +91,8 @@ from nullrun.breaker.exceptions import (
     NullRunError,
 )
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime.
 
 
 DEFAULT_TOOLS = [

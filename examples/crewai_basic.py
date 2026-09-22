@@ -1,11 +1,11 @@
-"""Enforce a CrewAI ``Crew.kickoff`` with @protect.
+"""Enforce a CrewAI ``Crew.kickoff`` with @protect (no init boilerplate).
 
-NOTE: CrewAI is auto-instrumented at ``Crew.__init__`` time — once
-``init_or_die`` runs, ``nullrun`` installs ``step_callback`` and
-``task_callback`` on every ``Crew`` the user creates (unless they
-supplied their own). After ``kickoff`` returns, ``crew.usage_metrics``
-is read once and the aggregated prompt / completion tokens are
-emitted as a ``track_llm`` event automatically.
+NOTE: CrewAI is auto-instrumented at ``Crew.__init__`` time — the
+``[crewai]`` extra subscribes to ``crewai.EventBus`` (1.15+) and
+translates each lifecycle event into a ``runtime.track_event`` call.
+After ``kickoff`` returns, ``crew.usage_metrics`` is read once and the
+aggregated prompt / completion tokens are emitted as a ``track_llm``
+event automatically.
 
 That means: ``track_llm`` (cost tracking) fires WITHOUT ``@protect``.
 You only need ``@protect`` if you want a **gate pre-flight** on
@@ -14,9 +14,12 @@ crew starts. Without ``@protect``, the crew runs and ``track_llm``
 posts the cost afterwards; if the workflow budget was already
 exhausted, the crew still runs (the cap is informational).
 
-If your goal is just to track cost, ``@protect`` is optional; if
-your goal is to enforce the cap before the crew starts, keep
-``@protect`` and ``@guarded`` as shown below.
+SDK 0.18.1:
+
+  * No ``init_or_die()`` -- the first ``@protect`` call lazily
+    creates the runtime and attaches the CrewAI EventBus hook.
+  * No ``@guarded`` -- ``with nullrun.handle():`` prints the
+    four-line developer report on any ``NullRunError``.
 
 Run:
     pip install "nullrun[crewai]" crewai
@@ -33,13 +36,14 @@ load_env()  # populate os.environ from examples/.env (no-op if absent)
 
 from crewai import Agent, Crew, Process, Task
 
-from nullrun import guarded, init_or_die, protect, shutdown
+import nullrun
+from nullrun import protect, shutdown
 
-init_or_die()  # reads NULLRUN_API_KEY from os.environ; friendly exit if missing
+# 0.18.1: NO init_or_die() -- the first @protect call below
+# lazily creates the runtime and attaches the crewai.EventBus hook.
 
 
-@guarded
-@protect
+@protect                                  # gates each LLM call via /check; workflow is derived from api_key server-side (CLAUDE.md §12 1:1 binding)
 def run_crew(prompt: str) -> str:
     researcher = Agent(
         role="researcher",
@@ -55,6 +59,7 @@ def run_crew(prompt: str) -> str:
 
 if __name__ == "__main__":
     try:
-        print(run_crew("What is the capital of France?"))
+        with nullrun.handle():
+            print(run_crew("What is the capital of France?"))
     finally:
         shutdown()

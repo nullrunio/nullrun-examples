@@ -5,8 +5,14 @@ the 80-line ceiling called out in the top-level README. Every basic
 example does the same five things:
 
     1. Load ``examples/.env`` into ``os.environ``.
-    2. Call ``init_or_die()`` so a missing ``NULLRUN_API_KEY`` exits cleanly.
-    3. Wrap the call site with a gate (``@guarded`` / ``@handle``).
+    2. (Optional) call ``init_or_die()`` so a missing ``NULLRUN_API_KEY``
+       exits cleanly. SDK 0.18.1+: this step is optional — the first
+       ``@protect`` call lazy-creates the runtime from the env var, so
+       most examples now skip it and rely on the ``with nullrun.handle():``
+       block to print the structured four-line developer report if the
+       key is missing.
+    3. Wrap the call site with a gate (``@protect``) — and optionally a
+       friendly-exit wrapper (``with nullrun.handle():`` / ``@guarded``).
     4. Run one ``@protect``-decorated call.
     5. ``shutdown()`` in a ``finally`` block to send a clean WS close.
 
@@ -47,17 +53,20 @@ def example_run(api_key: str | None = None, api_url: str | None = None) -> Itera
         invoke inside the block.
 
     Notes:
-        * ``init_or_die()`` exits with the catalog message if
+        * ``init_or_die()`` exits with the four-line developer report if
           ``NULLRUN_API_KEY`` is missing. No try/except needed in the
-          example body.
+          example body. New examples (SDK 0.18.1+) can skip this step
+          entirely and let the first ``@protect`` call lazy-init — the
+          trade-off is the missing-key error surfaces at the gate call,
+          not at module load time.
         * ``shutdown()`` sends a clean WebSocket close frame so the
           backend does not log ``"Connection reset without closing
-          handshake"``. No-op if ``init()`` was never called (which is
-          why it's safe to put in ``finally``).
-        * ``WorkflowKilledInterrupt`` (a ``BaseException``) is NOT
-          swallowed here — kill must reach the top of the agent loop.
-          ``@guarded`` / ``nullrun.handle()`` is still the right
-          decorator / context manager around the inner call.
+          handshake"``. No-op if the runtime was never created (which
+          is why it's safe to put in ``finally``).
+        * ``WorkflowKilledInterrupt`` (a ``NullRunError`` subclass) is
+          NOT swallowed here — kill must reach the top of the agent
+          loop. ``with nullrun.handle():`` is still the right context
+          manager around the inner call (it re-raises kill explicitly).
     """
     load_env()
     if api_key is not None:
@@ -89,7 +98,11 @@ RUN_ID = _os.environ.get("NULLRUN_RUN_ID", _time.strftime("%Y%m%dT%H%M"))
 
 
 def init_sdk_or_die() -> None:
-    """Load .env + init SDK; exits if NULLRUN_API_KEY missing."""
+    """Load .env + init SDK; exits if NULLRUN_API_KEY missing.
+
+    Test-plan helper. Most examples should prefer :func:`example_run`
+    (or no init at all, since 0.18.1) over calling this directly.
+    """
     load_env()
     try:
         import nullrun
