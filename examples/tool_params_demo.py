@@ -6,14 +6,17 @@ is live on the backend:
 
     1. ``@sensitive(impact=tool_params({...}))``  -- explicit map.
        Renames kwargs and/or picks which args land on the wire.
-    2. ``@sensitive``                             -- bare form. The SDK
-       auto-attaches ``ToolParamsExtractor(include_all=True)`` so
-       every kwarg reaches the operator without an explicit map.
-       This is the new default for any user adopting ToolParameters
-       Approval Rules on the backend.
+    2. ``@sensitive``                             -- bare form. **Deprecated
+       since SDK 0.18.1** — emits ``DeprecationWarning`` in 0.18.x,
+       removed in 0.19.x. ``@protect`` auto-attaches the same default
+       ``ToolParamsExtractor(include_all=True)``, so this variant is
+       equivalent to ``@protect`` alone. Kept here for migration
+       reference — new code should drop ``@sensitive`` and rely on
+       ``@protect``.
     3. ``@sensitive(impact=money_outflow(...))``   -- Phase 1 / MVP 1.0
        Money variant, untouched. Still the right answer when the
-       rule is "is this amount above the threshold?".
+       rule is "is this amount above the threshold?". This is the
+       ``@sensitive(impact=...)`` advanced API — **not deprecated**.
 
 All three ship the same wire shape (a ``BusinessImpact`` envelope
 with a SHA-256 ``action_digest``); only the discriminator
