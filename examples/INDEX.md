@@ -6,12 +6,11 @@ top-level README links here for the demos and probes tables.
 
 ## Basic — one per vendor / framework (≤ 80 lines each)
 
-SDK 0.18.1+: every example below uses lazy-init — there is **no**
-`init_or_die()` call, no `@guarded` decorator, and no explicit auto-
-instrumentation step. The first `@protect` call creates the runtime,
-attaches the framework hook, and prints the four-line developer
-report on any `NullRunError` via `with nullrun.handle():`. See
-`docs/concepts/error-handling.md` for the full pattern.
+SDK 0.18.1+: every example uses lazy-init — the first `@protect`
+call creates the runtime, attaches the framework hook, and prints
+the four-line developer report on any `NullRunError` via
+`with nullrun.handle():`. See `docs/concepts/error-handling.md`
+for the full pattern.
 
 | File | Vendor | What it shows |
 |---|---|---|
@@ -42,8 +41,8 @@ report on any `NullRunError` via `with nullrun.handle():`. See
 | File | What it shows |
 |---|---|
 | `gate_check_demo.py` | `/gate` pre-flight probe, no LLM, tool-name semantics |
-| `tool_params_demo.py` | Phase 1 / MVP 1.1 ToolParameters — three decorator shapes (`@sensitive(impact=tool_params({...}))`, bare `@sensitive`, `@sensitive(impact=money_outflow(...))`). The bare form is **deprecated** in SDK 0.18.1+ — kept here for migration reference. |
-| `protect_only_public_api_demo.py` | SDK 0.18.1 `@protect`-only public API — auto-attach of default `ToolParamsExtractor`, bounded extraction (1024-byte truncation + cycle guard + aggregate DEBUG log), and bare `@sensitive` `DeprecationWarning`. No LLM, no backend needed. |
+| `tool_params_demo.py` | Phase 1 / MVP 1.1 ToolParameters — three decorator shapes (`@protect`, `@protect @sensitive(impact=tool_params({...}))`, `@protect @sensitive(impact=money_outflow(...))`). |
+| `protect_only_public_api_demo.py` | SDK 0.18.1 `@protect`-only public API — auto-attach of default `ToolParamsExtractor`, bounded extraction (1024-byte truncation + cycle guard + aggregate DEBUG log), and the typed-extractor path. No LLM, no backend needed. |
 | `langgraph_openai_approval_demo.py` | LangGraph agent + `refund_customer` + approval rule |
 | `langgraph_openai_mcp_demo.py` | LangGraph + OpenAI + in-process MCP server (Разрыв 3) |
 

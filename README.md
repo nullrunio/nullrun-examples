@@ -57,17 +57,13 @@ idempotent step. You get cost tracking without changing your call
 sites; `@protect` is the **gate** layer (budget / kill / pause) that
 runs *before* the call.
 
-Because instrumentation is lazy, there is no need to import or call
-`nullrun.init_or_die()` — and there is no `nullrun[openai]` /
-`nullrun[anthropic]` / `nullrun[langgraph]` extra to install. Just
-`pip install nullrun` and decorate. If the framework package is
-importable in the same process, the corresponding hook attaches
-automatically on the first `@protect` call (a single WARNING logs
-otherwise — see the zero-activity diagnostic in the error catalog).
+Because instrumentation is lazy, just `pip install nullrun` and
+decorate. If the framework package is importable in the same
+process, the corresponding hook attaches automatically on the
+first `@protect` call (a single WARNING logs otherwise — see the
+zero-activity diagnostic in the error catalog).
 
-## The canonical API: `@protect` only (SDK 0.18.1+)
-
-SDK 0.18.1 collapses everything to a single entry point:
+## Decorator forms
 
 ```python
 @protect
@@ -75,25 +71,24 @@ def refund_customer(refund_amount: Decimal, customer_id: str) -> str:
     ...
 ```
 
-`@protect` auto-attaches a default `ToolParamsExtractor(include_all=True)`
+`@protect` auto-attaches a default `ToolParamsExtractor(include_all=True)`,
 so every protected tool is eligible for ToolParameters Approval Rules
 on the backend without any second decorator. SDK collects facts; the
 server decides.
 
-* **`@protect`** — canonical public entry point. Cheap (no `/execute`
-  round-trip) and good for ~all protected tools.
-* **`@protect @sensitive(impact=...)`** — advanced API for library
-  authors who need a typed `BusinessImpact` (e.g. `money_outflow(...)`)
-  with a SHA-256 `action_digest`. The decorator chain walks
-  inside-out, so the explicit extractor wins over the auto-attached
-  default.
-* **`@sensitive`** (bare) — **deprecated** in 0.18.1; emits
-  `DeprecationWarning`, removed in 0.19.x. Drop it and rely on
-  `@protect` — the wire payload is identical.
+* **`@protect`** — canonical entry point. Cheap, no `/execute`
+  round-trip.
+* **`@protect @sensitive(impact=money_outflow(...))`** — typed
+  extractor for money rules. Returns `MoneyImpactExtractor` with a
+  SHA-256 `action_digest`. The decorator chain walks inside-out, so
+  the explicit extractor wins over the auto-attached default.
+* **`@protect @sensitive(impact=tool_params({...}))`** — typed
+  extractor for arbitrary tool-param rules. Rename map decouples the
+  rule name from the function arg name.
 
 See [`protect_only_public_api_demo.py`](./examples/protect_only_public_api_demo.py)
-for a runnable verification of all four properties (auto-attach,
-1024-byte truncation, cycle guard, DeprecationWarning capture).
+for a runnable verification of auto-attach, bounded extraction, and
+the typed-extractor path.
 
 ## Examples
 
@@ -107,7 +102,7 @@ for a runnable verification of all four properties (auto-attach,
 | [`bedrock_basic.py`](./examples/bedrock_basic.py) | AWS Bedrock | `@protect` + manual `track_llm` (boto3 uses urllib3, not httpx) |
 | [`langchain_basic.py`](./examples/langchain_basic.py) | LangChain | Auto-instrumented `ChatModel.invoke` (not via LangGraph) |
 | [`langgraph_basic.py`](./examples/langgraph_basic.py) | LangGraph | Auto-instrumented `StateGraph` (recommended) |
-| [`langgraph_manual_wrapper.py`](./examples/langgraph_manual_wrapper.py) | LangGraph | `nullrun.patch_langgraph_compiled` for late-compiled graphs (replaces deprecated `wrapper()`) |
+| [`langgraph_manual_wrapper.py`](./examples/langgraph_manual_wrapper.py) | LangGraph | `nullrun.patch_langgraph_compiled` for late-compiled graphs |
 | [`llama_index_basic.py`](./examples/llama_index_basic.py) | llama-index | Auto-instrumented `LLMChatEndEvent` / `FunctionCallEvent` |
 | [`crewai_basic.py`](./examples/crewai_basic.py) | CrewAI | Auto-instrumented `Crew.kickoff` + `usage_metrics` flush |
 | [`autogen_basic.py`](./examples/autogen_basic.py) | AutoGen | Auto-instrumented `BaseChatAgent.on_messages` |
@@ -188,7 +183,7 @@ the entry point is enough.
 | `Connection reset without closing handshake` on the backend | forgot `shutdown()` in a long-running script | add `nullrun.shutdown()` in `finally` (every example already does) |
 | `NR-B004 NullRunBudgetError` after a few calls | workflow budget exhausted on the dashboard | raise the cap or wait for the reset |
 | `WorkflowKilledInterrupt` propagates up | operator clicked "kill" on the dashboard | expected; the agent loop sees it as a `BaseException` and exits cleanly |
-| `init_or_die()` exits with a clean message | `NULLRUN_API_KEY` not set (legacy examples only; new examples lazy-init) | `cp examples/.env.example examples/.env` and fill it in |
+| `init_or_die()` exits with a clean message | `NULLRUN_API_KEY` not set | `cp examples/.env.example examples/.env` and fill it in |
 | `ImportError: mcp.server` in the MCP demo | `modelcontextprotocol` not installed | `pip install "nullrun[langgraph,mcp]"` |
 
 ## Contributing

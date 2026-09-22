@@ -1,39 +1,39 @@
 """Demonstrate the SDK 0.18.1 ``@protect``-only public API.
 
 This example proves the four load-bearing properties of the
-``@protect`` consolidation WITHOUT calling any LLM and WITHOUT a
+``@protect`` public contract WITHOUT calling any LLM and WITHOUT a
 live NullRun backend. It is intended for a developer who wants to
-verify their SDK install picks up the new contract end-to-end
-before wiring it into a real agent loop.
+verify their SDK install picks up the contract end-to-end before
+wiring it into a real agent loop.
 
 Four properties demonstrated:
 
 1. ``@protect`` auto-attaches a default ``ToolParamsExtractor`` on
    every decorated function. The wire ``params`` dict is populated
-   from the kwargs of the live call. No ``@sensitive`` required.
+   from the kwargs of the live call.
 
 2. The default extraction is bounded: oversized strings get a
    deterministic ``...[truncated:N bytes]`` marker; circular
    references in nested dict/list structures return the partial
    walk instead of raising ``RecursionError``.
 
-3. Bare ``@sensitive`` is deprecated (SDK 0.18.1) and emits
-   ``DeprecationWarning``. The legacy behaviour still runs.
+3. ``@sensitive`` on its own emits ``DeprecationWarning`` on
+   decoration.
 
-4. Explicit ``@sensitive(impact=...)`` is NOT deprecated — it
-   remains the advanced API for library authors.
+4. ``@sensitive(impact=money_outflow(...))`` returns a typed
+   ``MoneyImpactExtractor`` without any warning.
 
 Why this example does not call a real backend:
 
-The extraction layer (the part this example demonstrates) is pure
-local transformation: ``ToolParamsExtractor.impact_for(fn, args,
-kwargs)`` returns a ``BusinessImpact`` without touching the
-network. The runtime singleton is required for *registration* of
-sensitive tools, but the extraction itself is wired to the function
-via the ``_nullrun_extractor`` attribute set by the decorator
-itself. So we read the attribute back out and call ``impact_for``
-directly — the same pattern a downstream SDK consumer would use
-in a unit test.
+The extraction layer is pure local transformation:
+``ToolParamsExtractor.impact_for(fn, args, kwargs)`` returns a
+``BusinessImpact`` without touching the network. The runtime
+singleton is required for *registration* of sensitive tools, but
+the extraction itself is wired to the function via the
+``_nullrun_extractor`` attribute set by the decorator itself. So
+we read the attribute back out and call ``impact_for`` directly
+— the same pattern a downstream SDK consumer would use in a unit
+test.
 
 Run:
     pip install nullrun
@@ -60,12 +60,12 @@ from nullrun.extractor import money_outflow
 
 @protect
 def refund_customer(customer_id: str, amount: int, currency: str) -> str:
-    """Bare @protect stamps a default extractor on the function."""
+    """@protect stamps a default extractor on the function."""
     return f"refund {amount} {currency} for {customer_id}"
 
 
 def demo_property_1() -> None:
-    """Bare @protect now ships tool_params without @sensitive."""
+    """@protect ships tool_params automatically."""
     print("\n=== Property 1: @protect auto-attaches default tool_params ===")
     extractor = getattr(refund_customer, "_nullrun_extractor", None)
     assert extractor is not None, (
@@ -132,7 +132,7 @@ def demo_property_2_cycle_guard() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Property 3 — bare @sensitive DeprecationWarning
+# Property 3 — @sensitive on its own emits DeprecationWarning
 #
 # We capture the warning with ``warnings.catch_warnings(record=True)``
 # so we never reach ``_do_sensitive_register`` (which would require
@@ -142,8 +142,8 @@ def demo_property_2_cycle_guard() -> None:
 
 
 def demo_property_3() -> None:
-    """Bare @sensitive emits DeprecationWarning in 0.18.x; legacy code path kept."""
-    print("\n=== Property 3: bare @sensitive DeprecationWarning ===")
+    """``@sensitive`` (no parens) emits DeprecationWarning on decoration."""
+    print("\n=== Property 3: @sensitive DeprecationWarning ===")
     # We can't decorate at module scope because that would hit
     # _do_sensitive_register → runtime init → 401. Instead, we
     # reach into ``sensitive`` directly: build a dummy fn, call
@@ -175,16 +175,15 @@ def demo_property_3() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Property 4 — explicit @sensitive(impact=...) is NOT deprecated
+# Property 4 — @sensitive(impact=...) returns a typed extractor
 # ---------------------------------------------------------------------------
 
 
 def demo_property_4() -> None:
-    """Factory form is the explicit advanced API; no DeprecationWarning."""
-    print("\n=== Property 4: @sensitive(impact=...) is NOT deprecated ===")
+    """``@sensitive(impact=money_outflow(...))`` returns MoneyImpactExtractor."""
+    print("\n=== Property 4: @sensitive(impact=...) returns typed extractor ===")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        # Just instantiating the extractor must not warn.
         _ = money_outflow(argument="amount_cents", currency="USD", units="minor")
 
     deprecation_warnings = [
@@ -192,15 +191,12 @@ def demo_property_4() -> None:
     ]
     print(f"  no DeprecationWarning from money_outflow(...): {not deprecation_warnings}")
 
-    # And the factory itself returns a MoneyImpactExtractor, not
-    # the auto-attached ToolParamsExtractor — confirming that
-    # ``@sensitive(impact=...)`` is the explicit advanced API.
     from nullrun.extractor import MoneyImpactExtractor
 
     ext = money_outflow(argument="amount_cents", currency="USD", units="minor")
     print(f"  factory return type: {type(ext).__name__}")
     print(f"  is MoneyImpactExtractor: {isinstance(ext, MoneyImpactExtractor)}")
-    print(f"  NOT auto-attached: {not getattr(ext, '_nullrun_auto_attached', False)}")
+    print(f"  not auto-attached: {not getattr(ext, '_nullrun_auto_attached', False)}")
 
 
 if __name__ == "__main__":

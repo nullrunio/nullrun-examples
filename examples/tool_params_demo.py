@@ -1,22 +1,17 @@
 """Phase 1 / MVP 1.1 -- ToolParameters Approval Rules demo.
 
-Demonstrates the three ways a user can attach a typed impact to a
-``@sensitive`` tool now that Phase 1 / MVP 1.1 (Tier 2 of Razryv 2)
-is live on the backend:
+Demonstrates the three ways to attach a typed impact to a tool now
+that Phase 1 / MVP 1.1 (Tier 2 of Razryv 2) is live on the backend:
 
-    1. ``@sensitive(impact=tool_params({...}))``  -- explicit map.
-       Renames kwargs and/or picks which args land on the wire.
-    2. ``@sensitive``                             -- bare form. **Deprecated
-       since SDK 0.18.1** — emits ``DeprecationWarning`` in 0.18.x,
-       removed in 0.19.x. ``@protect`` auto-attaches the same default
-       ``ToolParamsExtractor(include_all=True)``, so this variant is
-       equivalent to ``@protect`` alone. Kept here for migration
-       reference — new code should drop ``@sensitive`` and rely on
-       ``@protect``.
-    3. ``@sensitive(impact=money_outflow(...))``   -- Phase 1 / MVP 1.0
-       Money variant, untouched. Still the right answer when the
-       rule is "is this amount above the threshold?". This is the
-       ``@sensitive(impact=...)`` advanced API — **not deprecated**.
+    1. ``@protect``                                -- default extractor.
+       Auto-attaches ``ToolParamsExtractor(include_all=True)``;
+       every kwarg lands on the wire under its own name.
+    2. ``@protect @sensitive(impact=tool_params({...}))`` -- explicit
+       map. Renames kwargs and/or picks which args land on the wire.
+    3. ``@protect @sensitive(impact=money_outflow(...))``  -- Phase 1
+       Money variant. Typed extractor that converts
+       ``Decimal(units="major")`` to integer minor units and
+       rejects ``float`` (no IEEE-754 precision loss).
 
 All three ship the same wire shape (a ``BusinessImpact`` envelope
 with a SHA-256 ``action_digest``); only the discriminator
@@ -79,13 +74,27 @@ from nullrun.extractor import money_outflow, tool_params
 # variant lands on the wire. Operators write ONE ToolParameters
 # rule on the dashboard and it matches all three (because the
 # backend matcher branches on the discriminated kind field).
-#
-# Each ``@sensitive`` call below shows a real-world motivation for
-# picking that decorator shape over the others.
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-# Variant 1: ``@sensitive(impact=tool_params({...}))`` -- explicit map.
+# Variant 1: ``@protect`` -- auto-attached default.
+#
+# Use this when:
+#   - The function has few, named args.
+#   - The operator-facing rule name matches the function-arg name
+#     (or the rule references the arg directly without renaming).
+@protect
+def delete_user_auto(user_id: str, force: bool) -> str:
+    """``delete_user_auto`` -- @protect alone, auto-attached extractor.
+
+    Wire payload (BusinessImpact.kind="tool_call"):
+        tool_name="delete_user_auto"
+        params={"user_id": ..., "force": ...}     # all kwargs
+    """
+    return json.dumps({"status": "ok", "tool": "delete_user_auto", "force": force})
+
+
+# Variant 2: ``@sensitive(impact=tool_params({...}))`` -- explicit map.
 #
 # Use this when:
 #   - The operator-facing rule name ("delete_force") diverges from
@@ -107,29 +116,6 @@ def delete_user_explicit(force: bool, user_id: str) -> str:
         params={"delete_force": <force value>}
     """
     return json.dumps({"status": "ok", "tool": "delete_user_explicit", "force": force})
-
-
-# Variant 2: bare ``@sensitive`` -- auto-attached default.
-#
-# The SDK stamps a default ``ToolParamsExtractor(include_all=True)``
-# at decoration time, so every kwarg lands on the wire under its
-# own name. This is the new default for users adopting
-# ToolParameters Approval Rules on the backend.
-#
-# Use this when:
-#   - The function has few, named args.
-#   - The operator-facing rule name matches the function-arg name
-#     (or the rule references the arg directly without renaming).
-@sensitive
-@protect
-def delete_user_auto(user_id: str, force: bool) -> str:
-    """``delete_user_auto`` -- bare @sensitive, auto-attached extractor.
-
-    Wire payload (BusinessImpact.kind="tool_call"):
-        tool_name="delete_user_auto"
-        params={"user_id": ..., "force": ...}     # all kwargs
-    """
-    return json.dumps({"status": "ok", "tool": "delete_user_auto", "force": force})
 
 
 # Variant 3: ``@sensitive(impact=money_outflow(...))`` -- Phase 1 Money.
@@ -167,19 +153,16 @@ def refund_customer(refund_amount, customer_id: str) -> str:
 # 2. Main -- invoke all three so the operator can see each on the
 # dashboard.
 #
-# On the first run, every tool will be NEW to the backend's rules
-# engine. With the ToolParameters rule from the docstring
-# (param_name="delete_force", matcher=equals, value=true), the
-# third call -- delete_user_auto(force=True) -- is the one that
-# fires the rule. The other two (delete_user_explicit with
-# delete_force=true, delete_user_auto with force=True and the
-# auto-named param) are independent because the rule name maps
-# to a specific param_name. Adjust the rule to match
-# ``force`` (the auto-extracted name) and re-run to see both
-# ``delete_*`` calls match.
+# With the ToolParameters rule from the module docstring
+# (param_name="delete_force", matcher=equals, value=true), variant
+# 2 -- delete_user_explicit(force=True) -- fires the rule because
+# the rename map lands it on the wire as {delete_force: true}.
+# Variant 1 -- delete_user_auto(force=True) -- does NOT match that
+# rule because the auto-extracted param name is "force". Adjust
+# the rule to ``force`` to also match variant 1.
 # ──────────────────────────────────────────────────────────────────────────────
 def _try_call(label: str, fn, **kwargs) -> None:
-    """Invoke a @sensitive tool and print the result.
+    """Invoke a @protect tool and print the result.
 
     Three possible outcomes (each printed with its source):
       * ``allow`` -- the gate returned allow and the body ran.
@@ -216,21 +199,21 @@ if __name__ == "__main__":
         # loop; this demo fires three independent calls so each
         # gets its own approval gate.
         with nullrun.handle():
-            # (1) Explicit rename: rule_param "delete_force" maps
-            # to the function arg "force".
-            _try_call("explicit-map", delete_user_explicit,
-                      force=True, user_id="cust-1")
-
-        with nullrun.handle():
-            # (2) Bare @sensitive -- auto-attached extractor
+            # (1) @protect alone -- auto-attached extractor
             # captures {"user_id": ..., "force": ...}. If the
             # rule param_name is "delete_force" (the renamed form
-            # in variant 1), this call DOES NOT match the rule
+            # in variant 2), this call DOES NOT match the rule
             # because the wire payload uses "force" not
             # "delete_force". Edit the rule param_name to "force"
             # to also match this call.
             _try_call("auto", delete_user_auto,
                       user_id="cust-1", force=True)
+
+        with nullrun.handle():
+            # (2) Explicit rename: rule_param "delete_force" maps
+            # to the function arg "force".
+            _try_call("explicit-map", delete_user_explicit,
+                      force=True, user_id="cust-1")
 
         with nullrun.handle():
             # (3) Money variant -- does not match the

@@ -2,12 +2,9 @@
 
 The script stands up a small LangGraph agent that exposes ONE
 ``refund_customer`` tool annotated with a Phase 1 / MVP 1.0
-``@sensitive(impact=money_outflow(...))`` **advanced API** extractor
-(not the bare-``@sensitive`` form — bare ``@sensitive`` was
-deprecated in SDK 0.18.1; see ``protect_only_public_api_demo.py``
-for the migration). The agent is asked to issue three refunds in
-a single run ($100, $50.99, $499 USD). Once the operator configures
-an approval rule of the form
+``@sensitive(impact=money_outflow(...))`` extractor. The agent is
+asked to issue three refunds in a single run ($100, $50.99, $499 USD).
+Once the operator configures an approval rule of the form
 
     when amount > $50 USD  ->  require approval
 
@@ -19,13 +16,12 @@ WebSocket push) before completing the next leg.
 The deliberate structure:
 
   * The tool is a plain Python function decorated with
-    ``@nullrun.sensitive(impact=money_outflow(...))`` (the advanced
-    factory form — NOT deprecated) and ``@nullrun.protect``.
-    ``@protect`` is the gate boundary that fires the /check
-    pre-flight on every call; the ``money_outflow`` extractor
-    turns the keyword argument into a typed ``BusinessImpact``
-    whose SHA-256 digest is folded into the
-    ``action_predicate``-match on the backend.
+    ``@nullrun.sensitive(impact=money_outflow(...))`` and
+    ``@nullrun.protect``. ``@protect`` is the gate boundary that
+    fires the /check pre-flight on every call; the
+    ``money_outflow`` extractor turns the keyword argument into
+    a typed ``BusinessImpact`` whose SHA-256 digest is folded
+    into the ``action_predicate``-match on the backend.
   * The LangGraph is a single ``agent`` node that:
       - Calls Chat Completions with ``tools=[...]``.
       - On a `tool_calls` response, invokes the matching local
@@ -84,11 +80,10 @@ from nullrun.breaker.exceptions import (
 from nullrun.decorators import protect, sensitive
 from nullrun.extractor import money_outflow
 
-# 0.18.1: NO init_or_die() -- the first @protect call below
-# lazily creates the runtime and auto-instruments langgraph.
-# ``patch_langgraph_compiled`` replaces the deprecated
-# ``nullrun.toolbox.langgraph.wrapper()`` and preserves the
-# ``CompiledGraph`` type so existing isinstance checks work.
+# Lazy init -- the first @protect call below creates the
+# runtime and auto-instruments langgraph. ``patch_langgraph_compiled``
+# preserves the ``CompiledGraph`` type so existing isinstance
+# checks work.
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
@@ -231,9 +226,8 @@ def run_tool_call(tool_call: dict) -> str:
          "type": "tool_call"}
 
     The body of the local ``refund_customer`` is annotated
-    ``@sensitive(impact=money_outflow(...)) @protect`` (the
-    advanced factory form — bare ``@sensitive`` is deprecated
-    in SDK 0.18.1+) so the gate fires on the way in;
+    ``@sensitive(impact=money_outflow(...)) @protect`` so the
+    gate fires on the way in;
     the ``json.loads`` step is gone because LangGraph
     already parsed the OpenAI JSON arguments into a dict.
     Returns the function's result as a JSON-encoded string
