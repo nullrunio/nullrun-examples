@@ -30,48 +30,21 @@ examples/__pycache__/
 # Throwaway probe scripts (anything starting with `.tmp_`)
 *.tmp_*.py
 
+# Internal QA + probes — kept on disk for the QA team, never published.
+# `nullrun-examples` is the public "how do I add NullRun to my stack"
+# surface; everything in `internal/` is QA harness material, ad-hoc
+# probe/debug scripts, and TC runners that assume specific workflows
+# configured on the dashboard. Move new internal material here, not
+# back into `examples/` or repo root.
+internal/
+
 # Internal QA artefacts (kept on disk, never committed)
 explotarory testing/
 exploratory_testing/
-qa/logs/
-qa/*.log
+internal/qa/logs/
+internal/qa/**/*.log
 SDK_BACKEND_PARITY_MATRIX.md
 
-# Public-repo hygiene — internal staging credentials + wire-dump metadata.
-# Files were committed when the QA harness lived in this repo with a
-# hardcoded internal-staging user (admin login + password) plus wire-dump
-# JSONs that include actor_label. None of these are safe to publish
-# externally. They remain on disk for internal use; this block prevents
-# (re)tracking them.
-
-# Wire-dump JSON — internal debug captures containing actor metadata
-examples/_tc*_wire_dump.json
-
-# Files with hardcoded internal-staging admin login (see qa/setup_helpers.py
-# for the canonical account reference; values intentionally omitted here so
-# the credentials do not appear in this tracked file).
-examples/_ui_bootstrap.py
-examples/anomaly_mode_run.py
-examples/ar_action_digest.py
-examples/ar_model_filter.py
-examples/ar_multi_rule.py
-examples/loop_detection_run.py
-examples/mcp_umbrella_run.py
-examples/policy_composite.py
-examples/policy_edit_mid_chain.py
-examples/policy_precedence.py
-examples/rate_limit_column_run.py
-qa/_driver_template.py
-qa/probes/api_key_crossorg.py
-qa/probes/api_key_mask.py
-qa/probes/apikey_revoke.py
-qa/probes/cookie_flags.py
-qa/probes/cookie_session_inline.py
-qa/probes/csrf_bypass.py
-qa/tc_1_allow.py
-qa/tc_2_tool_block.py
-qa/tc_3_budget_block.py
-qa/tc_3_budget_block_dbg.py
-qa/tc_4_rate_limit.py
-qa/tc_5_approval.py
-qa/tc_6_chain.py
+# Wire-dump JSON — internal debug captures containing actor metadata.
+# Pattern is kept broad so a new dump at any path is still ignored.
+**/_tc*_wire_dump.json
